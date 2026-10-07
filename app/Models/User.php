@@ -2,9 +2,13 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\Division;
+use App\Enums\Role;
+use App\Enums\UserStatus;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -13,15 +17,25 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    protected $primaryKey = 'user_id';
+
     /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
      */
     protected $fillable = [
-        'name',
+        'first_name',
+        'last_name',
         'email',
         'password',
+        'role',
+        'division',
+        'status',
+        'signature_path',
+        'reset_code',
+        'reset_expires_at',
+        'is_active',
     ];
 
     /**
@@ -44,6 +58,30 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'role' => Role::class,
+            'division' => Division::class,
+            'status' => UserStatus::class,
+            'reset_code' => 'hashed',
+            'reset_expires_at' => 'datetime',
+            'is_active' => 'boolean',
         ];
+    }
+
+    public function scopeTechnicians(Builder $query): Builder
+    {
+        return $query
+            ->where('division', Division::EDP->value)
+            ->where('status', UserStatus::Active->value)
+            ->where('is_active', true);
+    }
+
+    public function itSupportRequests(): HasMany
+    {
+        return $this->hasMany(ItSupportRequest::class, 'requester_user_id', 'user_id');
+    }
+
+    public function getFullNameAttribute(): string
+    {
+        return trim("{$this->first_name} {$this->last_name}");
     }
 }
