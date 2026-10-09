@@ -66,4 +66,17 @@ class ProfileTest extends TestCase
         $this->assertNotNull($user->refresh()->email_verified_at);
     }
 
+    public function test_profile_email_must_not_exceed_225_characters(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        Volt::test('profile.update-profile-information-form')
+            ->set('email', str_repeat('a', 214).'@example.com')
+            ->call('updateProfileInformation')
+            ->assertHasErrors(['email' => 'max']);
+
+        $this->assertSame($user->email, $user->refresh()->email);
+    }
 }

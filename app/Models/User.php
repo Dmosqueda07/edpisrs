@@ -80,6 +80,36 @@ class User extends Authenticatable
         return $this->hasMany(ItSupportRequest::class, 'requester_user_id', 'user_id');
     }
 
+    public function assignedItSupportRequests(): HasMany
+    {
+        return $this->hasMany(ItSupportRequest::class, 'assigned_technician_id', 'user_id');
+    }
+
+    public function resolvedItSupportRequests(): HasMany
+    {
+        return $this->hasMany(ItSupportRequest::class, 'resolved_by_user_id', 'user_id');
+    }
+
+    public function itSupportRequestApprovals(): HasMany
+    {
+        return $this->hasMany(ItSupportRequestApproval::class, 'approver_user_id', 'user_id');
+    }
+
+    public function itSupportRequestComments(): HasMany
+    {
+        return $this->hasMany(ItSupportRequestComment::class, 'user_id', 'user_id');
+    }
+
+    public function uploadedSupportRequestAttachments(): HasMany
+    {
+        return $this->hasMany(ItSupportRequestAttachment::class, 'uploaded_by', 'user_id');
+    }
+
+    public function itSupportRequestLogs(): HasMany
+    {
+        return $this->hasMany(ItSupportRequestLog::class);
+    }
+
     public function getFullNameAttribute(): string
     {
         return trim("{$this->first_name} {$this->last_name}");

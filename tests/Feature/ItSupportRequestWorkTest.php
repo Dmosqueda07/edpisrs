@@ -37,7 +37,8 @@ it('enforces the technician work lifecycle and requester completion confirmation
         ->assertRedirect(route('it-support-requests.show', $supportRequest));
 
     expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::InProgress)
-        ->and($supportRequest->fresh()->started_at)->not->toBeNull();
+        ->and($supportRequest->fresh()->started_at)->not->toBeNull()
+        ->and($supportRequest->logs()->where('action', 'work_started')->exists())->toBeTrue();
 
     $this->get(route('it-support-requests.show', $supportRequest))
         ->assertOk()
@@ -49,7 +50,9 @@ it('enforces the technician work lifecycle and requester completion confirmation
     $supportRequest->refresh();
     expect($supportRequest->status)->toBe(ItSupportRequestStatus::Resolved)
         ->and($supportRequest->resolved_by_user_id)->toBe($technician->user_id)
-        ->and($supportRequest->resolved_at)->not->toBeNull();
+        ->and($supportRequest->resolved_at)->not->toBeNull()
+        ->and($supportRequest->logs()->where('action', 'resolved')->value('from_status'))
+        ->toBe(ItSupportRequestStatus::InProgress->value);
 
     $this->actingAs($requester)
         ->get(route('it-support-requests.show', $supportRequest))
@@ -64,8 +67,11 @@ it('enforces the technician work lifecycle and requester completion confirmation
         ->patch(route('it-support-requests.complete', $supportRequest))
         ->assertRedirect(route('it-support-requests.show', $supportRequest));
 
-    expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::Completed)
-        ->and($supportRequest->fresh()->completed_at)->not->toBeNull();
+    expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::Closed)
+        ->and($supportRequest->fresh()->closed_at)->not->toBeNull()
+        ->and($supportRequest->fresh()->requester_confirmed_at)->not->toBeNull()
+        ->and($supportRequest->logs()->where('action', 'requester_confirmed')->value('to_status'))
+        ->toBe(ItSupportRequestStatus::Closed->value);
 });
 
 it('only allows active EDP technicians to access their assigned work queue', function () {
@@ -121,7 +127,7 @@ it('prevents an inactive assigned technician from updating a request', function 
 });
 
 it('lets the requester and assigned technician share comments and private proof', function () {
-    Storage::fake('local');
+    Storage::fake('private');
     $requester = User::factory()->create();
     $technician = User::factory()->create(['division' => Division::EDP]);
     $supportRequest = ItSupportRequest::factory()
@@ -140,7 +146,7 @@ it('lets the requester and assigned technician share comments and private proof'
     $this->actingAs($technician)
         ->post(route('it-support-requests.comments.store', $supportRequest), [
             'body' => 'Replaced the network cable and tested the connection.',
-            'proof' => UploadedFile::fake()->create('network-test.pdf', 1, 'application/pdf'),
+            'proof' => UploadedFile::fake()->createWithContent('network-test.pdf', "%PDF-1.4\nproof"),
         ])
         ->assertRedirect(route('it-support-requests.show', $supportRequest));
 
@@ -152,7 +158,7 @@ it('lets the requester and assigned technician share comments and private proof'
     expect($proofComment->author_name)->toBe($technician->full_name)
         ->and($proofComment->body)->toBe('Replaced the network cable and tested the connection.');
 
-    Storage::disk('local')->assertExists($proofComment->proof_path);
+    Storage::disk('private')->assertExists($proofComment->proof_path);
 
     $this->actingAs($requester)
         ->get(route('it-support-requests.show', $supportRequest))
@@ -164,10 +170,43 @@ it('lets the requester and assigned technician share comments and private proof'
     $this->get(route('it-support-requests.comment-proof', [$supportRequest, $proofComment]))
         ->assertOk()
         ->assertDownload("it-support-request-{$supportRequest->getKey()}-proof-{$proofComment->getKey()}.pdf");
+
+    expect($supportRequest->logs()->where('action', 'comment_added')->exists())->toBeTrue()
+        ->and($supportRequest->logs()->where('action', 'attachment_uploaded')->exists())->toBeTrue();
+});
+
+it('logs internal notes and hides them from the requester', function () {
+    $requester = User::factory()->create();
+    $technician = User::factory()->create(['division' => Division::EDP]);
+    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+        'assigned_technician_id' => $technician->user_id,
+        'status' => ItSupportRequestStatus::InProgress,
+    ]);
+
+    $this->actingAs($technician)
+        ->post(route('it-support-requests.comments.store', $supportRequest), [
+            'body' => 'Check with network team before closing.',
+            'is_internal' => '1',
+        ])
+        ->assertRedirect(route('it-support-requests.show', $supportRequest));
+
+    expect($supportRequest->logs()->where('action', 'internal_note_added')->value('user_id'))
+        ->toBe($technician->user_id);
+
+    $this->actingAs($requester)
+        ->get(route('it-support-requests.show', $supportRequest))
+        ->assertOk()
+        ->assertDontSee('Check with network team before closing.');
+
+    $this->actingAs($technician)
+        ->get(route('it-support-requests.show', $supportRequest))
+        ->assertOk()
+        ->assertSee('Check with network team before closing.')
+        ->assertSee('Internal note');
 });
 
 it('does not allow requesters to upload technician proof', function () {
-    Storage::fake('local');
+    Storage::fake('private');
     $requester = User::factory()->create();
     $technician = User::factory()->create(['division' => Division::EDP]);
     $supportRequest = ItSupportRequest::factory()
@@ -180,21 +219,21 @@ it('does not allow requesters to upload technician proof', function () {
     $this->actingAs($requester)
         ->post(route('it-support-requests.comments.store', $supportRequest), [
             'body' => 'Here is my proof.',
-            'proof' => UploadedFile::fake()->create('proof.pdf', 1, 'application/pdf'),
+            'proof' => UploadedFile::fake()->createWithContent('proof.pdf', "%PDF-1.4\nproof"),
         ])
         ->assertForbidden();
 
     expect($supportRequest->comments()->count())->toBe(0);
-    Storage::disk('local')->assertDirectoryEmpty('it-support-requests/proofs');
+    Storage::disk('private')->assertDirectoryEmpty('it-support-requests/proofs');
 });
 
 it('does not serve proof attached to a different request', function () {
-    Storage::fake('local');
+    Storage::fake('private');
     $requester = User::factory()->create();
     $firstRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
     $secondRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
     $proofPath = 'it-support-requests/proofs/other-request.pdf';
-    Storage::disk('local')->put($proofPath, '%PDF-1.4 other request');
+    Storage::disk('private')->put($proofPath, '%PDF-1.4 other request');
     $comment = $secondRequest->comments()->create([
         'user_id' => $requester->user_id,
         'author_name' => $requester->full_name,
@@ -212,7 +251,7 @@ it('prevents comments after requester completion', function () {
     $supportRequest = ItSupportRequest::factory()
         ->for($requester, 'requester')
         ->create([
-            'status' => ItSupportRequestStatus::Completed,
+            'status' => ItSupportRequestStatus::Closed,
             'completed_at' => now(),
         ]);
 

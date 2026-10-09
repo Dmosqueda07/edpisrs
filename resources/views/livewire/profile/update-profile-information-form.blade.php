@@ -9,7 +9,9 @@ use Livewire\Volt\Component;
 new class extends Component
 {
     public string $first_name = '';
+
     public string $last_name = '';
+
     public string $email = '';
 
     /**
@@ -32,7 +34,7 @@ new class extends Component
         $validated = $this->validate([
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($user->user_id, 'user_id')],
+            'email' => ['required', 'string', 'lowercase', 'email', 'max:225', Rule::unique(User::class)->ignore($user->user_id, 'user_id')],
         ]);
 
         $user->fill($validated);
@@ -99,7 +101,7 @@ new class extends Component
                     <p class="text-sm mt-2 text-gray-800">
                         {{ __('Your email address is unverified.') }}
 
-                        <button wire:click.prevent="sendVerification" class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <button wire:click.prevent="sendVerification" class="underline text-sm text-blue-700 hover:text-blue-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                             {{ __('Click here to re-send the verification email.') }}
                         </button>
                     </p>

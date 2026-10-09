@@ -37,26 +37,29 @@
                 @enderror
             </fieldset>
 
-            @if ($followUpQuestion)
+            @foreach ($fields as $field)
                 <div class="mt-6">
-                    <label for="details" class="block text-sm font-medium text-gray-700">
-                        {{ $followUpQuestion }} <span aria-hidden="true">*</span>
+                    <label for="answer-{{ $field['key'] }}" class="block text-sm font-medium text-gray-700">
+                        {{ $field['label'] }} <span aria-hidden="true">*</span>
                     </label>
-                    <textarea id="details" name="details" rows="5" required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-600 focus:ring-blue-600">{{ old('details') }}</textarea>
-                    @error('details')
+                    <textarea id="answer-{{ $field['key'] }}" name="answers[{{ $field['key'] }}]" rows="5" required
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-600 focus:ring-blue-600">{{ old('answers.'.$field['key'], old('details')) }}</textarea>
+                    @error('answers.'.$field['key'])
                         <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                     @enderror
                 </div>
-            @endif
+            @endforeach
         </section>
 
         <section>
-            <label for="attachment" class="block text-sm font-medium text-gray-700">Supporting document (optional)</label>
-            <p class="mt-1 text-sm text-gray-500">Attach an image or PDF, up to 10 MB.</p>
-            <input id="attachment" name="attachment" type="file" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
+            <label for="attachments" class="block text-sm font-medium text-gray-700">Supporting documents (optional)</label>
+            <p class="mt-1 text-sm text-gray-500">Attach up to 5 images or PDFs, 5 MB each.</p>
+            <input id="attachments" name="attachments[]" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
                 class="mt-2 block w-full text-sm text-gray-700 file:me-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:font-medium file:text-blue-800 hover:file:bg-blue-100">
-            @error('attachment')
+            @error('attachments')
+                <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+            @enderror
+            @error('attachments.*')
                 <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
             @enderror
         </section>

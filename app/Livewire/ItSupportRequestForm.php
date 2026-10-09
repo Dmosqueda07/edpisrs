@@ -19,10 +19,12 @@ class ItSupportRequestForm extends Component
     {
         $requestTypes = RequestType::active()->get();
         $selectedType = $requestTypes->firstWhere('id', (int) $this->requestTypeId);
+        $selectedDefinition = collect(config('request_forms.request_types'))
+            ->firstWhere('key', $selectedType?->key);
 
         return view('livewire.it-support-request-form', [
             'requestTypes' => $requestTypes,
-            'followUpQuestion' => $selectedType?->follow_up_question,
+            'fields' => $selectedDefinition['fields'] ?? [],
         ]);
     }
 }

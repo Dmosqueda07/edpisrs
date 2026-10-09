@@ -13,23 +13,53 @@ class StoreItSupportRequestRequest extends FormRequest
         return $this->user() !== null;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('answers') || ! $this->filled('details')) {
+            return;
+        }
+
+        $requestType = RequestType::query()->find($this->input('request_type_id'));
+        $definition = collect(config('request_forms.request_types'))
+            ->firstWhere('key', $requestType?->key);
+
+        if ($definition) {
+            $this->merge([
+                'answers' => [
+                    $definition['fields'][0]['key'] => $this->input('details'),
+                ],
+            ]);
+        }
+    }
+
     /**
      * @return array<string, array<int, mixed>>
      */
     public function rules(): array
     {
-        return [
+        $requestType = RequestType::query()->find($this->input('request_type_id'));
+        $definition = collect(config('request_forms.request_types'))
+            ->firstWhere('key', $requestType?->key);
+        $rules = [
             'request_type_id' => [
                 'required',
                 'integer',
                 Rule::exists('request_types', 'id')->where('is_active', true),
             ],
-            'details' => [
-                Rule::requiredIf(fn () => RequestType::active()->whereKey($this->input('request_type_id'))->exists()),
-                'string',
+            'answers' => ['required', 'array'],
+            'attachments' => ['nullable', 'array', 'max:5'],
+            'attachments.*' => [
+                'file',
+                'max:5120',
+                'mimetypes:application/pdf,image/jpeg,image/png,image/gif,image/webp',
             ],
-            'attachment' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:10240'],
             'certification' => ['accepted'],
         ];
+
+        foreach ($definition['fields'] ?? [] as $field) {
+            $rules["answers.{$field['key']}"] = ['required', 'string', 'max:10000'];
+        }
+
+        return $rules;
     }
 }

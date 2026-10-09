@@ -56,6 +56,7 @@ class ItSupportRequestPolicy
         return $this->manageAssignments($user)
             && in_array($itSupportRequest->status, [
                 ItSupportRequestStatus::Submitted,
+                ItSupportRequestStatus::Approved,
                 ItSupportRequestStatus::Assigned,
             ], true);
     }
@@ -78,9 +79,39 @@ class ItSupportRequestPolicy
             && $itSupportRequest->status === ItSupportRequestStatus::Resolved;
     }
 
+    public function cancel(User $user, ItSupportRequest $itSupportRequest): bool
+    {
+        if (in_array($itSupportRequest->status, [
+            ItSupportRequestStatus::Resolved,
+            ItSupportRequestStatus::Closed,
+            ItSupportRequestStatus::Cancelled,
+        ], true)) {
+            return false;
+        }
+
+        if (in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true)) {
+            return true;
+        }
+
+        return $itSupportRequest->requester_user_id === $user->user_id
+            && in_array($itSupportRequest->status, [
+                ItSupportRequestStatus::Submitted,
+                ItSupportRequestStatus::PendingApproval,
+            ], true);
+    }
+
+    public function reopen(User $user, ItSupportRequest $itSupportRequest): bool
+    {
+        return $itSupportRequest->requester_user_id === $user->user_id
+            && $itSupportRequest->status === ItSupportRequestStatus::Resolved
+            && $itSupportRequest->resolved_at !== null
+            && $itSupportRequest->resolved_at->greaterThanOrEqualTo(now()->subDays(3))
+            && $itSupportRequest->assigned_technician_id !== null;
+    }
+
     public function comment(User $user, ItSupportRequest $itSupportRequest): bool
     {
-        return $itSupportRequest->status !== ItSupportRequestStatus::Completed
+        return $itSupportRequest->status !== ItSupportRequestStatus::Closed
             && (
                 $itSupportRequest->requester_user_id === $user->user_id
                 || $this->isAssignedTechnician($user, $itSupportRequest)
@@ -89,8 +120,18 @@ class ItSupportRequestPolicy
 
     public function addProof(User $user, ItSupportRequest $itSupportRequest): bool
     {
-        return $itSupportRequest->status !== ItSupportRequestStatus::Completed
+        return $itSupportRequest->status !== ItSupportRequestStatus::Closed
             && $this->isAssignedTechnician($user, $itSupportRequest);
+    }
+
+    public function internalNote(User $user, ItSupportRequest $itSupportRequest): bool
+    {
+        return $this->manageAssignments($user) || $this->isAssignedTechnician($user, $itSupportRequest);
+    }
+
+    public function viewInternalNotes(User $user, ItSupportRequest $itSupportRequest): bool
+    {
+        return $this->internalNote($user, $itSupportRequest);
     }
 
     private function isAssignedTechnician(User $user, ItSupportRequest $itSupportRequest): bool

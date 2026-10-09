@@ -139,10 +139,12 @@ it('approves a pending request once and makes it available for assignment', func
     $supportRequest->refresh();
     $approval = $supportRequest->approvals()->firstOrFail();
 
-    expect($supportRequest->status)->toBe(ItSupportRequestStatus::Submitted)
+    expect($supportRequest->status)->toBe(ItSupportRequestStatus::Approved)
         ->and($approval->decision)->toBe(ApprovalDecision::Approved)
         ->and($approval->approver_user_id)->toBe($administrator->user_id)
-        ->and($approval->comment)->toBe('Approved for processing.');
+        ->and($approval->comment)->toBe('Approved for processing.')
+        ->and($supportRequest->logs()->where('action', 'approval_decision')->value('to_status'))
+        ->toBe(ItSupportRequestStatus::Approved->value);
 
     $this->patch(route('edp.it-support-requests.assign', $supportRequest), [
         'technician_id' => $technician->user_id,
@@ -176,7 +178,9 @@ it('rejects a request and prevents it from being assigned', function () {
         ->assertRedirect();
 
     expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::Rejected)
-        ->and($supportRequest->approvals()->firstOrFail()->decision)->toBe(ApprovalDecision::Rejected);
+        ->and($supportRequest->approvals()->firstOrFail()->decision)->toBe(ApprovalDecision::Rejected)
+        ->and($supportRequest->logs()->where('action', 'approval_decision')->value('to_status'))
+        ->toBe(ItSupportRequestStatus::Rejected->value);
 
     $this->patch(route('edp.it-support-requests.assign', $supportRequest), [
         'technician_id' => $technician->user_id,

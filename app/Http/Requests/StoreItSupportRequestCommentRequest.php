@@ -16,6 +16,10 @@ class StoreItSupportRequestCommentRequest extends FormRequest
             return false;
         }
 
+        if ($this->boolean('is_internal') && ! $user->can('internalNote', $supportRequest)) {
+            return false;
+        }
+
         return ! $this->hasFile('proof') || $user->can('addProof', $supportRequest);
     }
 
@@ -26,7 +30,13 @@ class StoreItSupportRequestCommentRequest extends FormRequest
     {
         return [
             'body' => ['required', 'string'],
-            'proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,pdf', 'max:10240'],
+            'is_internal' => ['sometimes', 'boolean'],
+            'proof' => [
+                'nullable',
+                'file',
+                'mimetypes:application/pdf,image/jpeg,image/png,image/gif,image/webp',
+                'max:5120',
+            ],
         ];
     }
 }

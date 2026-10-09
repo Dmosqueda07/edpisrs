@@ -51,7 +51,33 @@ it('allows an administrator to assign an active EDP technician and marks the req
     expect($supportRequest->assigned_technician_id)->toBe($technician->user_id)
         ->and($supportRequest->technician->is($technician))->toBeTrue()
         ->and($supportRequest->assigned_at)->not->toBeNull()
-        ->and($supportRequest->status)->toBe(ItSupportRequestStatus::Assigned);
+        ->and($supportRequest->status)->toBe(ItSupportRequestStatus::Assigned)
+        ->and($supportRequest->logs()->where('action', 'assigned')->value('to_status'))
+        ->toBe(ItSupportRequestStatus::Assigned->value);
+});
+
+it('logs reassignment from the previous technician', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $requester = User::factory()->create();
+    $firstTechnician = User::factory()->create(['division' => Division::EDP]);
+    $secondTechnician = User::factory()->create(['division' => Division::EDP]);
+    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+        'assigned_technician_id' => $firstTechnician->user_id,
+        'status' => ItSupportRequestStatus::Assigned,
+    ]);
+
+    $this->actingAs($administrator)
+        ->patch(route('edp.it-support-requests.assign', $supportRequest), [
+            'technician_id' => $secondTechnician->user_id,
+        ])
+        ->assertRedirect(route('edp.it-support-requests.index'));
+
+    $log = $supportRequest->logs()->where('action', 'reassigned')->firstOrFail();
+    expect($supportRequest->fresh()->assigned_technician_id)->toBe($secondTechnician->user_id)
+        ->and($log->user_id)->toBe($administrator->user_id)
+        ->and($log->from_status)->toBe(ItSupportRequestStatus::Assigned->value)
+        ->and($log->to_status)->toBe(ItSupportRequestStatus::Assigned->value)
+        ->and($log->remarks)->toContain((string) $firstTechnician->user_id);
 });
 
 it('rejects assignment to users outside the active EDP technician scope', function (array $technicianAttributes) {

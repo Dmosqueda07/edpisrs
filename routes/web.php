@@ -8,6 +8,8 @@ Route::view('/', 'welcome');
 Route::middleware('auth')->group(function () {
     Route::get('it-support-requests/{it_support_request}/attachment', [ItSupportRequestController::class, 'downloadAttachment'])
         ->name('it-support-requests.attachment');
+    Route::get('it-support-requests/{it_support_request}/attachments/{attachment}', [ItSupportRequestController::class, 'downloadRequestAttachment'])
+        ->name('it-support-requests.attachments.download');
     Route::get('it-support-requests/{it_support_request}/comments/{comment}/proof', [ItSupportRequestController::class, 'downloadProof'])
         ->name('it-support-requests.comment-proof');
     Route::post('it-support-requests/{it_support_request}/comments', [ItSupportRequestController::class, 'storeComment'])
@@ -18,6 +20,10 @@ Route::middleware('auth')->group(function () {
         ->name('it-support-requests.resolve');
     Route::patch('it-support-requests/{it_support_request}/complete', [ItSupportRequestController::class, 'confirmCompletion'])
         ->name('it-support-requests.complete');
+    Route::patch('it-support-requests/{it_support_request}/cancel', [ItSupportRequestController::class, 'cancel'])
+        ->name('it-support-requests.cancel');
+    Route::patch('it-support-requests/{it_support_request}/reopen', [ItSupportRequestController::class, 'reopen'])
+        ->name('it-support-requests.reopen');
     Route::patch('it-support-requests/{it_support_request}/approval', [ItSupportRequestController::class, 'decideApproval'])
         ->name('it-support-requests.approval');
 

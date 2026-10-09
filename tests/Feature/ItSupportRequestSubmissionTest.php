@@ -65,7 +65,7 @@ it('shows the matching required follow-up prompt for every support type', functi
 });
 
 it('stores a certified request and private attachment and queues confirmation email', function () {
-    Storage::fake('local');
+    Storage::fake('private');
     Mail::fake();
 
     $user = User::factory()->create([
@@ -77,8 +77,10 @@ it('stores a certified request and private attachment and queues confirmation em
 
     $response = $this->actingAs($user)->post(route('it-support-requests.store'), [
         'request_type_id' => $requestType->getKey(),
-        'details' => 'Computer does not start after a restart.',
-        'attachment' => UploadedFile::fake()->create('computer.pdf', 1, 'application/pdf'),
+        'answers' => ['details' => 'Computer does not start after a restart.'],
+        'attachments' => [
+            UploadedFile::fake()->createWithContent('computer.pdf', "%PDF-1.4\nexample"),
+        ],
         'certification' => '1',
     ]);
 
@@ -90,12 +92,36 @@ it('stores a certified request and private attachment and queues confirmation em
         ->and($supportRequest->division)->toBe(Division::EDP->value)
         ->and($supportRequest->request_type_id)->toBe($requestType->getKey())
         ->and($supportRequest->support_type)->toBe($requestType->name)
-        ->and($supportRequest->follow_up_question)->toBe($requestType->follow_up_question)
-        ->and($supportRequest->details)->toBe('Computer does not start after a restart.')
+        ->and($supportRequest->detailsRows()->firstOrFail()->field_label)->toBe($requestType->follow_up_question)
+        ->and($supportRequest->detailsRows()->firstOrFail()->field_value)->toBe('Computer does not start after a restart.')
         ->and($supportRequest->certified_at)->not->toBeNull()
         ->and($supportRequest->status->value)->toBe('submitted');
 
-    Storage::disk('local')->assertExists($supportRequest->attachment_path);
+    $attachment = $supportRequest->attachments()->firstOrFail();
+    Storage::disk('private')->assertExists($attachment->file_path);
+    expect($attachment->uploaded_by)->toBe($user->user_id)
+        ->and($supportRequest->logs()->where('action', 'submitted')->exists())->toBeTrue()
+        ->and($supportRequest->logs()->where('action', 'attachment_uploaded')->exists())->toBeTrue();
+
+    $this->actingAs($user)
+        ->get(route('it-support-requests.show', $supportRequest))
+        ->assertOk()
+        ->assertSee('Computer does not start after a restart.')
+        ->assertSee('computer.pdf');
+
+    $this->get(route('it-support-requests.attachments.download', [$supportRequest, $attachment]))
+        ->assertOk()
+        ->assertDownload('computer.pdf');
+
+    $otherUser = User::factory()->create();
+    $this->actingAs($otherUser)
+        ->get(route('it-support-requests.attachments.download', [$supportRequest, $attachment]))
+        ->assertForbidden();
+
+    $otherRequest = ItSupportRequest::factory()->for($user, 'requester')->create();
+    $this->actingAs($user)
+        ->get(route('it-support-requests.attachments.download', [$otherRequest, $attachment]))
+        ->assertNotFound();
     Mail::assertQueued(ItSupportRequestReceived::class, fn (ItSupportRequestReceived $mail) => $mail->hasTo($user->email));
 });
 
@@ -107,12 +133,12 @@ it('accepts a request without an optional attachment', function () {
     $this->actingAs($user)
         ->post(route('it-support-requests.store'), [
             'request_type_id' => $requestType->getKey(),
-            'details' => 'Please specify the support required.',
+            'answers' => ['details' => 'Please specify the support required.'],
             'certification' => '1',
         ])
         ->assertRedirect(route('it-support-requests.show', ItSupportRequest::query()->firstOrFail()));
 
-    expect(ItSupportRequest::query()->firstOrFail()->attachment_path)->toBeNull();
+    expect(ItSupportRequest::query()->firstOrFail()->attachments()->count())->toBe(0);
 });
 
 it('requires a known support type, details, and certification', function () {
@@ -128,32 +154,40 @@ it('requires a known support type, details, and certification', function () {
     $this->post(route('it-support-requests.store'), [
         'request_type_id' => $requestType->getKey(),
         'certification' => '1',
-    ])->assertSessionHasErrors('details');
+    ])->assertSessionHasErrors('answers.details');
 
     expect(ItSupportRequest::query()->count())->toBe(0);
 });
 
-it('rejects unsupported attachment types and files over 10 MB', function () {
+it('rejects invalid real MIME types, attachments over 5 MB, and more than five files', function () {
     $user = User::factory()->create();
     $requestType = RequestType::where('key', 'other-it-request')->firstOrFail();
     $requestData = [
         'request_type_id' => $requestType->getKey(),
-        'details' => 'Please install an approved application.',
+        'answers' => ['details' => 'Please install an approved application.'],
         'certification' => '1',
     ];
 
     $this->actingAs($user)
         ->post(route('it-support-requests.store'), [
             ...$requestData,
-            'attachment' => UploadedFile::fake()->create('script.txt', 1, 'text/plain'),
+            'attachments' => [UploadedFile::fake()->create('script.pdf', 1, 'text/plain')],
         ])
-        ->assertSessionHasErrors('attachment');
+        ->assertSessionHasErrors('attachments.0');
 
     $this->post(route('it-support-requests.store'), [
         ...$requestData,
-        'attachment' => UploadedFile::fake()->create('large.pdf', 10241, 'application/pdf'),
+        'attachments' => [UploadedFile::fake()->create('large.pdf', 5121, 'application/pdf')],
     ])
-        ->assertSessionHasErrors('attachment');
+        ->assertSessionHasErrors('attachments.0');
+
+    $this->post(route('it-support-requests.store'), [
+        ...$requestData,
+        'attachments' => array_map(
+            fn () => UploadedFile::fake()->createWithContent('valid.pdf', "%PDF-1.4\nvalid"),
+            range(1, 6),
+        ),
+    ])->assertSessionHasErrors('attachments');
 
     expect(ItSupportRequest::query()->count())->toBe(0);
 });
