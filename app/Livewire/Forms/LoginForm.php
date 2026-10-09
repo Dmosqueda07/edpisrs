@@ -3,6 +3,7 @@
 namespace App\Livewire\Forms;
 
 use App\Enums\UserStatus;
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -31,6 +32,20 @@ class LoginForm extends Form
     {
         $this->ensureIsNotRateLimited();
 
+        $user = User::query()->where('email', $this->email)->first();
+
+        if ($user?->status === UserStatus::Pending) {
+            $this->rejectLogin('Your account is pending administrator approval.');
+        }
+
+        if ($user?->status === UserStatus::Suspended) {
+            $this->rejectLogin('Your account has been suspended. Contact an administrator.');
+        }
+
+        if ($user !== null && ! $user->is_active) {
+            $this->rejectLogin('Your account is inactive. Contact an administrator.');
+        }
+
         if (! Auth::attempt([
             ...$this->only(['email', 'password']),
             'status' => UserStatus::Active->value,
@@ -44,6 +59,15 @@ class LoginForm extends Form
         }
 
         RateLimiter::clear($this->throttleKey());
+    }
+
+    private function rejectLogin(string $message): never
+    {
+        RateLimiter::hit($this->throttleKey());
+
+        throw ValidationException::withMessages([
+            'form.email' => $message,
+        ]);
     }
 
     /**

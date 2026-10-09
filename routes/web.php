@@ -1,11 +1,23 @@
 <?php
 
 use App\Http\Controllers\ItSupportRequestController;
+use App\Http\Controllers\ProfileSignatureController;
+use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome');
 
 Route::middleware('auth')->group(function () {
+    Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
+    Route::patch('users/{user}/approve', [UserManagementController::class, 'approve'])->name('users.approve');
+    Route::patch('users/{user}/suspend', [UserManagementController::class, 'suspend'])->name('users.suspend');
+    Route::patch('users/{user}/reactivate', [UserManagementController::class, 'reactivate'])->name('users.reactivate');
+    Route::patch('users/{user}/role', [UserManagementController::class, 'updateRole'])->name('users.role');
+    Route::patch('users/{user}/division', [UserManagementController::class, 'updateDivision'])->name('users.division');
+    Route::put('users/{user}/password', [UserManagementController::class, 'resetPassword'])->name('users.password');
+    Route::post('profile/signature', [ProfileSignatureController::class, 'store'])->name('profile.signature.store');
+    Route::get('users/{user}/signature', [ProfileSignatureController::class, 'show'])->name('users.signature');
+
     Route::get('it-support-requests/{it_support_request}/attachment', [ItSupportRequestController::class, 'downloadAttachment'])
         ->name('it-support-requests.attachment');
     Route::get('it-support-requests/{it_support_request}/attachments/{attachment}', [ItSupportRequestController::class, 'downloadRequestAttachment'])

@@ -74,17 +74,30 @@ it('scopes technicians to active EDP users only', function () {
 });
 
 it('rejects login for accounts that are not active and enabled', function (array $attributes) {
+    $expectedMessage = $attributes['expected_message'];
+    unset($attributes['expected_message']);
     $user = User::factory()->create($attributes);
 
-    Volt::test('pages.auth.login')
+    $component = Volt::test('pages.auth.login')
         ->set('form.email', $user->email)
         ->set('form.password', 'password')
-        ->call('login')
-        ->assertHasErrors();
+        ->call('login');
+
+    $component->assertHasErrors()
+        ->assertSee($expectedMessage);
 
     $this->assertGuest();
 })->with([
-    'pending account' => [['status' => UserStatus::Pending]],
-    'suspended account' => [['status' => UserStatus::Suspended]],
-    'disabled account' => [['is_active' => false]],
+    'pending account' => [[
+        'status' => UserStatus::Pending,
+        'expected_message' => 'pending administrator approval',
+    ]],
+    'suspended account' => [[
+        'status' => UserStatus::Suspended,
+        'expected_message' => 'has been suspended',
+    ]],
+    'disabled account' => [[
+        'is_active' => false,
+        'expected_message' => 'account is inactive',
+    ]],
 ]);

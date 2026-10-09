@@ -40,6 +40,11 @@ new class extends Component
                     <x-nav-link :href="route('it-support-requests.index')" :active="request()->routeIs('it-support-requests.index')" wire:navigate>
                         {{ __('My Requests') }}
                     </x-nav-link>
+                    @can('viewAny', \App\Models\User::class)
+                        <x-nav-link :href="route('users.index')" :active="request()->routeIs('users.*')" wire:navigate>
+                            {{ __('User management') }}
+                        </x-nav-link>
+                    @endcan
                     @can('manageAssignments', \App\Models\ItSupportRequest::class)
                         <x-nav-link :href="route('edp.it-support-requests.index')" :active="request()->routeIs('edp.it-support-requests.*')" wire:navigate>
                             {{ __('EDP Intake') }}
@@ -112,6 +117,11 @@ new class extends Component
             <x-responsive-nav-link :href="route('it-support-requests.index')" :active="request()->routeIs('it-support-requests.index')" wire:navigate>
                 {{ __('My Requests') }}
             </x-responsive-nav-link>
+            @can('viewAny', \App\Models\User::class)
+                <x-responsive-nav-link :href="route('users.index')" :active="request()->routeIs('users.*')" wire:navigate>
+                    {{ __('User management') }}
+                </x-responsive-nav-link>
+            @endcan
             @can('manageAssignments', \App\Models\ItSupportRequest::class)
                 <x-responsive-nav-link :href="route('edp.it-support-requests.index')" :active="request()->routeIs('edp.it-support-requests.*')" wire:navigate>
                     {{ __('EDP Intake') }}
