@@ -43,7 +43,8 @@ class ItSupportRequestPolicy
 
     public function manageAssignments(User $user): bool
     {
-        return in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true);
+        return $this->isActive($user)
+            && in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true);
     }
 
     public function viewAssigned(User $user): bool

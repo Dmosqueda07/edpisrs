@@ -8,11 +8,11 @@ use App\Enums\UserStatus;
 use App\Models\User;
 use App\Services\UserManagementAuditLogger;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 
 class UserManagementController extends Controller
@@ -23,9 +23,6 @@ class UserManagementController extends Controller
 
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
-            'status' => ['nullable', Rule::in(['pending', 'active', 'suspended', 'inactive'])],
-            'division' => ['nullable', Rule::in(array_column(Division::cases(), 'value'))],
-            'role' => ['nullable', Rule::in(array_column(Role::cases(), 'value'))],
         ]);
 
         $users = User::query()
@@ -36,18 +33,6 @@ class UserManagementController extends Controller
                         ->orWhere('email', 'like', '%'.$search.'%');
                 });
             })
-            ->when($filters['status'] ?? null, function ($query, string $status): void {
-                if ($status === 'inactive') {
-                    $query->where('is_active', false);
-
-                    return;
-                }
-
-                $query->where('status', $status)
-                    ->where('is_active', true);
-            })
-            ->when($filters['division'] ?? null, fn ($query, string $division) => $query->where('division', $division))
-            ->when($filters['role'] ?? null, fn ($query, string $role) => $query->where('role', $role))
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->orderBy('user_id')
@@ -90,11 +75,11 @@ class UserManagementController extends Controller
             $this->authorize('suspend', $user);
 
             $oldValues = ['status' => $user->status->value, 'is_active' => $user->is_active];
-            $user->forceFill(['status' => UserStatus::Suspended, 'is_active' => true])->save();
+            $user->forceFill(['status' => UserStatus::Suspended, 'is_active' => false])->save();
 
             $audit->record(auth()->user(), $user, 'suspend', $oldValues, [
                 'status' => UserStatus::Suspended->value,
-                'is_active' => true,
+                'is_active' => false,
             ]);
         });
 
@@ -166,22 +151,39 @@ class UserManagementController extends Controller
         return back()->with('status', 'User division updated.');
     }
 
-    public function resetPassword(Request $request, User $user, UserManagementAuditLogger $audit): RedirectResponse
+    public function resetPassword(User $user, UserManagementAuditLogger $audit): JsonResponse
     {
-        $validated = $request->validate([
-            'password' => ['required', 'confirmed', Password::defaults()],
-        ]);
+        $this->authorize('resetPassword', $user);
 
-        DB::transaction(function () use ($user, $validated, $audit): void {
+        $password = $this->generateTemporaryPassword();
+
+        DB::transaction(function () use ($user, $password, $audit): void {
             $user->refresh();
             $this->authorize('resetPassword', $user);
 
-            $user->forceFill(['password' => Hash::make($validated['password'])])->save();
+            $user->forceFill([
+                'password' => Hash::make($password),
+                'must_change_password' => true,
+            ])->save();
             $audit->record(auth()->user(), $user, 'reset_password', ['password' => '[redacted]'], [
                 'password' => '[temporary password set; value redacted]',
+                'must_change_password' => true,
             ]);
         });
 
-        return back()->with('status', 'Temporary password set.');
+        return response()->json(['password' => $password])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    private function generateTemporaryPassword(): string
+    {
+        $characters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        $password = '';
+
+        for ($index = 0; $index < 12; $index++) {
+            $password .= $characters[random_int(0, strlen($characters) - 1)];
+        }
+
+        return $password;
     }
 }

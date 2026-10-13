@@ -36,6 +36,7 @@ class User extends Authenticatable
         'reset_code',
         'reset_expires_at',
         'is_active',
+        'must_change_password',
     ];
 
     /**
@@ -64,6 +65,7 @@ class User extends Authenticatable
             'reset_code' => 'hashed',
             'reset_expires_at' => 'datetime',
             'is_active' => 'boolean',
+            'must_change_password' => 'boolean',
         ];
     }
 

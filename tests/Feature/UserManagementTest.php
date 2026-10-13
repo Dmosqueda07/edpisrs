@@ -31,7 +31,7 @@ it('limits user management to active administrators', function () {
     $this->actingAs($administrator)->get(route('users.index'))->assertOk();
 });
 
-it('filters users by name, email, status, division, and role', function () {
+it('searches users by name or email without status, division, or role filters', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $match = User::factory()->create([
         'first_name' => 'Morgan',
@@ -46,13 +46,13 @@ it('filters users by name, email, status, division, and role', function () {
     $this->actingAs($administrator)
         ->get(route('users.index', [
             'search' => 'morgan.lane@example.com',
-            'status' => 'pending',
-            'division' => Division::EDP->value,
-            'role' => Role::Receiving->value,
         ]))
         ->assertOk()
         ->assertSee($match->email)
-        ->assertDontSee('another@example.com');
+        ->assertDontSee('another@example.com')
+        ->assertDontSee('All statuses')
+        ->assertDontSee('All divisions')
+        ->assertDontSee('All roles');
 });
 
 it('approves pending users and records the old and new state to audit', function () {
@@ -76,24 +76,53 @@ it('approves pending users and records the old and new state to audit', function
     expect($pending->refresh()->status)->toBe(UserStatus::Active);
 });
 
-it('lets administrators manage standard accounts and records division, role, and password actions', function () {
+it('updates a user role from the role management form', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $staff = User::factory()->create();
 
     $this->actingAs($administrator)
-        ->patch(route('users.role', $staff), ['role' => Role::Receiving->value])
-        ->assertRedirect();
+        ->get(route('users.index'))
+        ->assertOk()
+        ->assertSee('type="submit"', false)
+        ->assertSee('Update role');
+
+    $this->patch(route('users.role', $staff), ['role' => Role::Receiving->value])->assertRedirect();
     expect($staff->refresh()->role)->toBe(Role::Receiving);
+});
 
-    $this->patch(route('users.division', $staff), ['division' => Division::EDP->value])
-        ->assertRedirect();
+it('updates a user division from the division management form', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $staff = User::factory()->create();
+
+    $this->actingAs($administrator)
+        ->get(route('users.index'))
+        ->assertOk()
+        ->assertSee('type="submit"', false)
+        ->assertSee('Update division');
+
+    $this->patch(route('users.division', $staff), ['division' => Division::EDP->value])->assertRedirect();
     expect($staff->refresh()->division)->toBe(Division::EDP);
+});
 
-    $this->put(route('users.password', $staff), [
-        'password' => 'temporary-password',
-        'password_confirmation' => 'temporary-password',
-    ])->assertRedirect();
-    expect(Hash::check('temporary-password', $staff->refresh()->password))->toBeTrue();
+it('generates a one-time password and requires the employee to change it', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $staff = User::factory()->create();
+
+    $this->actingAs($administrator)
+        ->get(route('users.index'))
+        ->assertOk()
+        ->assertSee('Reset password')
+        ->assertSee('Reset password for')
+        ->assertDontSee('name="password"');
+
+    $response = $this->actingAs($administrator)->putJson(route('users.password', $staff));
+    $response->assertOk()->assertJsonStructure(['password']);
+
+    $password = $response->json('password');
+    expect(strlen($password))->toBe(12)
+        ->and($password)->toMatch('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{12}$/')
+        ->and(Hash::check($password, $staff->refresh()->password))->toBeTrue()
+        ->and($staff->must_change_password)->toBeTrue();
 });
 
 it('allows an administrator to suspend and reactivate a standard user', function () {
@@ -101,10 +130,12 @@ it('allows an administrator to suspend and reactivate a standard user', function
     $staff = User::factory()->create();
 
     $this->actingAs($administrator)->patch(route('users.suspend', $staff))->assertRedirect();
-    expect($staff->refresh()->status)->toBe(UserStatus::Suspended);
+    expect($staff->refresh()->status)->toBe(UserStatus::Suspended)
+        ->and($staff->is_active)->toBeFalse();
 
     $this->patch(route('users.reactivate', $staff))->assertRedirect();
-    expect($staff->refresh()->status)->toBe(UserStatus::Active);
+    expect($staff->refresh()->status)->toBe(UserStatus::Active)
+        ->and($staff->is_active)->toBeTrue();
 });
 
 it('prevents administrators from changing or suspending administrator accounts', function () {
@@ -194,10 +225,7 @@ it('only lets a super administrator reactivate or reset privileged accounts', fu
         ->patch(route('users.reactivate', $suspendedSuperAdministrator))
         ->assertForbidden();
 
-    $this->put(route('users.password', $suspendedSuperAdministrator), [
-        'password' => 'temporary-password',
-        'password_confirmation' => 'temporary-password',
-    ])->assertForbidden();
+    $this->put(route('users.password', $suspendedSuperAdministrator))->assertForbidden();
 });
 
 it('records admin password resets without writing the password value to the audit data', function () {
@@ -211,20 +239,45 @@ it('records admin password resets without writing the password value to the audi
             Mockery::on(fn (User $actualTarget): bool => $actualTarget->is($target)),
             'reset_password',
             ['password' => '[redacted]'],
-            ['password' => '[temporary password set; value redacted]'],
+            [
+                'password' => '[temporary password set; value redacted]',
+                'must_change_password' => true,
+            ],
         );
 
-    $this->actingAs($administrator)->put(route('users.password', $target), [
-        'password' => 'temporary-password',
-        'password_confirmation' => 'temporary-password',
-    ])->assertRedirect();
+    $this->actingAs($administrator)->putJson(route('users.password', $target))->assertOk();
+});
+
+it('forces an employee to change an administrator reset password at next login', function () {
+    $user = User::factory()->create([
+        'must_change_password' => true,
+        'status' => UserStatus::Active,
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($user)->get(route('dashboard'))->assertRedirect(route('password.change.edit'));
+    $this->get(route('password.change.edit'))->assertOk();
+
+    $this->put(route('password.change.update'), [
+        'password' => 'replacement-password',
+        'password_confirmation' => 'replacement-password',
+    ])->assertRedirect(route('dashboard'));
+
+    expect($user->refresh()->must_change_password)->toBeFalse()
+        ->and(Hash::check('replacement-password', $user->password))->toBeTrue();
 });
 
 it('reactivates an inactive account', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $inactive = User::factory()->create(['is_active' => false]);
 
-    $this->actingAs($administrator)->patch(route('users.reactivate', $inactive))->assertRedirect();
+    $this->actingAs($administrator)
+        ->get(route('users.index'))
+        ->assertOk()
+        ->assertSee('type="submit"')
+        ->assertSee('Reactivate');
+
+    $this->patch(route('users.reactivate', $inactive))->assertRedirect();
     expect($inactive->refresh()->is_active)->toBeTrue();
 });
 

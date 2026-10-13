@@ -1,3 +1,14 @@
+<div class="space-y-4">
+    <div class="flex items-center gap-3">
+        <label for="assigned-requests-status" class="text-sm font-medium text-gray-700">Filter by status</label>
+        <select id="assigned-requests-status" wire:model.live="status" class="rounded-md border-gray-300 text-sm shadow-sm">
+            <option value="">All statuses</option>
+            @foreach (\App\Enums\ItSupportRequestStatus::cases() as $statusOption)
+                <option value="{{ $statusOption->value }}">{{ \Illuminate\Support\Str::headline($statusOption->value) }}</option>
+            @endforeach
+        </select>
+    </div>
+
 <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
     @if ($requests->isEmpty())
         <div class="p-8 text-center text-gray-700">No requests are currently assigned to you.</div>
@@ -37,6 +48,7 @@
                     @endforeach
                 </tbody>
             </table>
+        </div>
         </div>
 
         <div class="border-t border-gray-200 px-6 py-4">

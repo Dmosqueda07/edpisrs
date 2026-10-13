@@ -1,13 +1,18 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ItSupportRequestController;
 use App\Http\Controllers\ProfileSignatureController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\Auth\ForcedPasswordChangeController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome');
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'password.change'])->group(function () {
+    Route::get('password/change', [ForcedPasswordChangeController::class, 'edit'])->name('password.change.edit');
+    Route::put('password/change', [ForcedPasswordChangeController::class, 'update'])->name('password.change.update');
+
     Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
     Route::patch('users/{user}/approve', [UserManagementController::class, 'approve'])->name('users.approve');
     Route::patch('users/{user}/suspend', [UserManagementController::class, 'suspend'])->name('users.suspend');
@@ -47,17 +52,19 @@ Route::middleware('auth')->group(function () {
         ->name('edp.assigned-requests.index');
     Route::patch('edp/it-support-requests/{it_support_request}/assign', [ItSupportRequestController::class, 'assign'])
         ->name('edp.it-support-requests.assign');
+    Route::patch('edp/it-support-requests/{it_support_request}/priority', [ItSupportRequestController::class, 'updatePriority'])
+        ->name('edp.it-support-requests.priority');
 
     Route::resource('it-support-requests', ItSupportRequestController::class)
         ->only(['index', 'create', 'store', 'show']);
 });
 
-Route::view('dashboard', 'dashboard')
-    ->middleware(['auth', 'verified'])
+Route::get('dashboard', DashboardController::class)
+    ->middleware(['auth', 'verified', 'password.change'])
     ->name('dashboard');
 
 Route::view('profile', 'profile')
-    ->middleware(['auth'])
+    ->middleware(['auth', 'password.change'])
     ->name('profile');
 
 require __DIR__.'/auth.php';

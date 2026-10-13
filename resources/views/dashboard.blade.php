@@ -5,6 +5,44 @@
     </x-slot>
 
     <div class="app-content-width dashboard-content">
+        @if ($dashboardType === 'administrator')
+            <section class="mb-10" aria-labelledby="dashboard-counts">
+                <h1 id="dashboard-counts" class="mb-4 text-xl font-semibold text-gray-900">Request overview</h1>
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    @foreach ($cards as $card)
+                        <a href="{{ $card['url'] }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow" data-dashboard-card="{{ \Illuminate\Support\Str::slug($card['label']) }}">
+                            <span class="block text-sm font-medium text-gray-600">{{ $card['label'] }}</span>
+                            <span class="mt-2 block text-3xl font-semibold text-gray-900">{{ $card['count'] }}</span>
+                        </a>
+                    @endforeach
+                </div>
+            </section>
+        @elseif ($dashboardType === 'technician')
+            <section class="mb-10" aria-labelledby="dashboard-counts">
+                <h1 id="dashboard-counts" class="mb-4 text-xl font-semibold text-gray-900">My assigned work</h1>
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    @foreach ($cards as $card)
+                        <a href="{{ $card['url'] }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow" data-dashboard-card="{{ \Illuminate\Support\Str::slug($card['label']) }}">
+                            <span class="block text-sm font-medium text-gray-600">{{ $card['label'] }}</span>
+                            <span class="mt-2 block text-3xl font-semibold text-gray-900">{{ $card['count'] }}</span>
+                        </a>
+                    @endforeach
+                </div>
+            </section>
+        @else
+            <section class="mb-10" aria-labelledby="dashboard-counts">
+                <h2 id="dashboard-counts" class="mb-4 text-xl font-semibold text-gray-900">My request counts</h2>
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    @foreach ($cards as $card)
+                        <a href="{{ $card['url'] }}" class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow" data-dashboard-card="{{ \Illuminate\Support\Str::slug($card['label']) }}">
+                            <span class="block text-sm font-medium text-gray-600">{{ $card['label'] }}</span>
+                            <span class="mt-2 block text-3xl font-semibold text-gray-900">{{ $card['count'] }}</span>
+                        </a>
+                    @endforeach
+                </div>
+            </section>
+        @endif
+
         <section class="dashboard-welcome" aria-labelledby="dashboard-title">
             <div class="dashboard-welcome-copy">
                 <p class="eyebrow eyebrow-blue">YOUR SUPPORT PORTAL</p>

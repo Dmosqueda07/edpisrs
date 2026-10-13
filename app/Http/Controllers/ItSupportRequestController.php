@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ApprovalDecision;
+use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
 use App\Http\Requests\AssignItSupportRequestRequest;
 use App\Http\Requests\DecideItSupportRequestApprovalRequest;
@@ -14,14 +15,17 @@ use App\Models\ItSupportRequestAttachment;
 use App\Models\ItSupportRequestComment;
 use App\Models\RequestType;
 use App\Models\User;
+use App\Notifications\RequestAssigned;
 use App\Services\ItSupportRequestAuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -69,7 +73,7 @@ class ItSupportRequestController extends Controller
     ): RedirectResponse {
         $technicianId = $request->validated('technician_id');
 
-        $technician = DB::transaction(function () use ($itSupportRequest, $technicianId, $request, $auditLogger) {
+        [$technician, $requester] = DB::transaction(function () use ($itSupportRequest, $technicianId, $request, $auditLogger) {
             $lockedRequest = ItSupportRequest::query()
                 ->whereKey($itSupportRequest->getKey())
                 ->lockForUpdate()
@@ -95,12 +99,56 @@ class ItSupportRequestController extends Controller
                     : "Assigned to {$technician->full_name}.",
             );
 
-            return $technician;
+            return [$technician, $lockedRequest->requester()->firstOrFail()];
         });
+
+        Notification::send(
+            collect([$technician, $requester])->unique(fn (User $recipient) => $recipient->getKey()),
+            new RequestAssigned($itSupportRequest->fresh(['requestType', 'technician', 'requester'])),
+        );
 
         return redirect()
             ->route('edp.it-support-requests.index')
-            ->with('status', "Request #{$itSupportRequest->getKey()} assigned to {$technician->full_name}.");
+            ->with('status', "Ticket {$itSupportRequest->ticket_no} assigned to {$technician->full_name}.");
+    }
+
+    public function updatePriority(
+        Request $request,
+        ItSupportRequest $itSupportRequest,
+        ItSupportRequestAuditLogger $auditLogger,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'priority' => ['required', Rule::enum(ItSupportRequestPriority::class)],
+        ]);
+
+        DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): void {
+            $lockedRequest = ItSupportRequest::query()
+                ->whereKey($itSupportRequest->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            Gate::authorize('manageAssignments', ItSupportRequest::class);
+
+            $oldPriority = $lockedRequest->priority;
+            $newPriority = ItSupportRequestPriority::from($validated['priority']);
+
+            if ($oldPriority === $newPriority) {
+                return;
+            }
+
+            $lockedRequest->priority = $newPriority;
+            $lockedRequest->save();
+            $auditLogger->record(
+                $lockedRequest,
+                $request->user(),
+                'priority_changed',
+                $lockedRequest->status,
+                $lockedRequest->status,
+                "Priority changed from {$oldPriority->value} to {$newPriority->value}.",
+            );
+        });
+
+        return back()->with('status', "Priority updated for ticket {$itSupportRequest->ticket_no}.");
     }
 
     public function decideApproval(

@@ -1,3 +1,14 @@
+<div class="space-y-4">
+    <div class="flex items-center gap-3">
+        <label for="my-requests-status" class="text-sm font-medium text-gray-700">Filter by status</label>
+        <select id="my-requests-status" wire:model.live="status" class="rounded-md border-gray-300 text-sm shadow-sm">
+            <option value="">All statuses</option>
+            @foreach (\App\Enums\ItSupportRequestStatus::cases() as $statusOption)
+                <option value="{{ $statusOption->value }}">{{ \Illuminate\Support\Str::headline($statusOption->value) }}</option>
+            @endforeach
+        </select>
+    </div>
+
 <div class="overflow-hidden bg-white shadow-sm sm:rounded-lg">
     @if ($requests->isEmpty())
         <div class="p-8 text-center">
@@ -5,6 +16,7 @@
             <a href="{{ route('it-support-requests.create') }}" class="mt-3 inline-block font-medium text-blue-700 hover:text-blue-900">
                 Submit your first request
             </a>
+        </div>
         </div>
     @else
         <div class="overflow-x-auto">
