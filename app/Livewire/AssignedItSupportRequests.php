@@ -25,7 +25,7 @@ class AssignedItSupportRequests extends Component
 
     public function render(): View
     {
-        Gate::authorize('viewAssigned', ItSupportRequest::class);
+        Gate::authorize('viewAssignedQueue', ItSupportRequest::class);
 
         $this->validate([
             'status' => [Rule::when($this->status !== '', Rule::in(array_column(ItSupportRequestStatus::cases(), 'value')))],

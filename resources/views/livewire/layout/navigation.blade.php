@@ -55,7 +55,7 @@ new class extends Component
                             {{ __('Approvals') }}
                         </x-nav-link>
                     @endcan
-                    @can('viewAssigned', \App\Models\ItSupportRequest::class)
+                    @can('viewAssignedQueue', \App\Models\ItSupportRequest::class)
                         <x-nav-link :href="route('edp.assigned-requests.index')" :active="request()->routeIs('edp.assigned-requests.*')" wire:navigate>
                             {{ __('Assigned to Me') }}
                         </x-nav-link>
@@ -132,7 +132,7 @@ new class extends Component
                     {{ __('Approvals') }}
                 </x-responsive-nav-link>
             @endcan
-            @can('viewAssigned', \App\Models\ItSupportRequest::class)
+            @can('viewAssignedQueue', \App\Models\ItSupportRequest::class)
                 <x-responsive-nav-link :href="route('edp.assigned-requests.index')" :active="request()->routeIs('edp.assigned-requests.*')" wire:navigate>
                     {{ __('Assigned to Me') }}
                 </x-responsive-nav-link>

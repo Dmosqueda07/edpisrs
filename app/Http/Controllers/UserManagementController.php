@@ -33,13 +33,16 @@ class UserManagementController extends Controller
                         ->orWhere('email', 'like', '%'.$search.'%');
                 });
             })
+            ->orderByRaw('CASE WHEN status = ? THEN 0 ELSE 1 END', [UserStatus::Pending->value])
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->orderBy('user_id')
             ->paginate(20)
             ->withQueryString();
 
-        return view('users.index', compact('users'));
+        $pendingCount = User::query()->where('status', UserStatus::Pending->value)->count();
+
+        return view('users.index', compact('users', 'pendingCount'));
     }
 
     public function approve(User $user, UserManagementAuditLogger $audit): RedirectResponse

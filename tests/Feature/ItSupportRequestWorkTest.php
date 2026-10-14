@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\Division;
+use App\Enums\Role;
 use App\Enums\ItSupportRequestStatus;
 use App\Models\ItSupportRequest;
 use App\Models\ItSupportRequestComment;
@@ -74,7 +75,7 @@ it('enforces the technician work lifecycle and requester completion confirmation
         ->toBe(ItSupportRequestStatus::Closed->value);
 });
 
-it('only allows active EDP technicians to access their assigned work queue', function () {
+it('restricts the assigned queue page to administrators without changing technician work permissions', function () {
     $technician = User::factory()->create(['division' => Division::EDP]);
     $otherTechnician = User::factory()->create(['division' => Division::EDP]);
     $requester = User::factory()->create();
@@ -93,10 +94,12 @@ it('only allows active EDP technicians to access their assigned work queue', fun
 
     $this->actingAs($technician)
         ->get(route('edp.assigned-requests.index'))
-        ->assertOk()
-        ->assertSee('#'.$assignedToMe->getKey())
-        ->assertSee('Assigned to this technician.')
-        ->assertDontSee('Assigned to another technician.');
+        ->assertForbidden();
+
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $this->actingAs($administrator)
+        ->get(route('edp.assigned-requests.index'))
+        ->assertOk();
 
     $inactiveTechnician = User::factory()->create([
         'division' => Division::EDP,
@@ -106,6 +109,9 @@ it('only allows active EDP technicians to access their assigned work queue', fun
     $this->actingAs($inactiveTechnician)
         ->get(route('edp.assigned-requests.index'))
         ->assertForbidden();
+
+    expect($assignedToMe->assigned_technician_id)->toBe($technician->user_id)
+        ->and($assignedElsewhere->assigned_technician_id)->toBe($otherTechnician->user_id);
 });
 
 it('prevents an inactive assigned technician from updating a request', function () {

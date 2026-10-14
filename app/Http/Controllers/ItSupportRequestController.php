@@ -61,7 +61,7 @@ class ItSupportRequestController extends Controller
 
     public function assigned(): View
     {
-        Gate::authorize('viewAssigned', ItSupportRequest::class);
+        Gate::authorize('viewAssignedQueue', ItSupportRequest::class);
 
         return view('it-support-requests.assigned');
     }

@@ -14,17 +14,16 @@ class DashboardController extends Controller
         $user = request()->user();
         abort_unless($user, 403);
 
-        if (Gate::allows('manageAssignments', ItSupportRequest::class)) {
+        if (Gate::allows('viewAdminDashboard', ItSupportRequest::class)) {
             $cards = $metrics->administratorCards();
+            $assignedCards = $metrics->technicianCards($user);
             $dashboardType = 'administrator';
-        } elseif (Gate::allows('viewAssigned', ItSupportRequest::class)) {
-            $cards = $metrics->technicianCards($user);
-            $dashboardType = 'technician';
         } else {
-            $cards = $metrics->employeeCards($user);
+            $cards = [];
+            $assignedCards = [];
             $dashboardType = 'employee';
         }
 
-        return view('dashboard', compact('cards', 'dashboardType'));
+        return view('dashboard', compact('cards', 'assignedCards', 'dashboardType'));
     }
 }

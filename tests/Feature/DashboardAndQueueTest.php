@@ -219,7 +219,7 @@ it('counts overdue activity using working days across weekends', function () {
         ->not->toContain($fridayActivity->ticket_no);
 });
 
-it('shows technicians only their own assigned status counts and employees their own request counts', function () {
+it('shows cards only to administrators and welcome actions without cards to other roles', function () {
     $technician = User::factory()->create(['division' => Division::EDP]);
     $otherTechnician = User::factory()->create(['division' => Division::EDP]);
     $requester = User::factory()->create();
@@ -235,9 +235,11 @@ it('shows technicians only their own assigned status counts and employees their 
     $this->actingAs($technician)
         ->get(route('dashboard'))
         ->assertOk()
-        ->assertSee('My assigned work')
-        ->assertSee('data-dashboard-card="my-assigned-requests"', false)
-        ->assertSee(route('edp.assigned-requests.index', ['status' => 'in_progress']), false);
+        ->assertSee('Your support home')
+        ->assertSee('Submit a request')
+        ->assertSee('Track my requests')
+        ->assertDontSee('data-dashboard-card=', false)
+        ->assertDontSee('Assigned to Me');
 
     $ownRequest = makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Submitted]);
     $otherRequest = makeDashboardRequest($otherTechnician, ['status' => ItSupportRequestStatus::Submitted]);
@@ -245,14 +247,47 @@ it('shows technicians only their own assigned status counts and employees their 
     $this->actingAs($requester)
         ->get(route('dashboard'))
         ->assertOk()
-        ->assertSee('My request counts')
-        ->assertSee(route('it-support-requests.index', ['status' => 'submitted']), false);
+        ->assertSee('Your support home')
+        ->assertSee('Submit a request')
+        ->assertSee('Track my requests')
+        ->assertDontSee('data-dashboard-card=', false)
+        ->assertDontSee('Assigned to Me');
 
     Livewire::actingAs($requester)
         ->withQueryParams(['status' => 'submitted'])
         ->test(MyItSupportRequests::class)
         ->assertSee('#'.$ownRequest->getKey())
         ->assertDontSee('#'.$otherRequest->getKey());
+});
+
+it('restricts dashboard cards and the assigned queue to the two administrator roles', function () {
+    foreach (Role::cases() as $role) {
+        $user = User::factory()->create(['role' => $role]);
+        $isAdministrator = in_array($role, [Role::Administrator, Role::SuperAdministrator], true);
+
+        $dashboard = $this->actingAs($user)->get(route('dashboard'))->assertOk();
+        if ($isAdministrator) {
+            $dashboard->assertSee('Request overview')
+                ->assertSee('My assigned work')
+                ->assertSee('My assigned requests')
+                ->assertSee('Assigned')
+                ->assertSee('In progress')
+                ->assertSee('On hold')
+                ->assertSee('Resolved')
+                ->assertSee('data-dashboard-card=', false)
+                ->assertSee('Assigned to Me');
+
+            $this->get(route('edp.assigned-requests.index'))->assertOk();
+        } else {
+            $dashboard->assertSee('Your support home')
+                ->assertSee('Submit a request')
+                ->assertSee('Track my requests')
+                ->assertDontSee('data-dashboard-card=', false)
+                ->assertDontSee('Assigned to Me');
+
+            $this->get(route('edp.assigned-requests.index'))->assertForbidden();
+        }
+    }
 });
 
 it('forbids non-administrators from viewing the request management queue', function () {

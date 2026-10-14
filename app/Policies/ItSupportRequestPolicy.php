@@ -47,6 +47,16 @@ class ItSupportRequestPolicy
             && in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true);
     }
 
+    public function viewAdminDashboard(User $user): bool
+    {
+        return in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true);
+    }
+
+    public function viewAssignedQueue(User $user): bool
+    {
+        return $this->viewAdminDashboard($user);
+    }
+
     public function viewAssigned(User $user): bool
     {
         return User::technicians()->whereKey($user->getKey())->exists();

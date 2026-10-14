@@ -55,6 +55,51 @@ it('searches users by name or email without status, division, or role filters', 
         ->assertDontSee('All roles');
 });
 
+it('shows pending accounts first and reports the total waiting for approval', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $active = User::factory()->create([
+        'first_name' => 'Aaron',
+        'last_name' => 'Active',
+        'email' => 'active@example.com',
+    ]);
+    $pendingOne = User::factory()->create([
+        'first_name' => 'Zoe',
+        'last_name' => 'Pending',
+        'email' => 'pending-one@example.com',
+        'status' => UserStatus::Pending,
+    ]);
+    $pendingTwo = User::factory()->create([
+        'first_name' => 'Avery',
+        'last_name' => 'Pending',
+        'email' => 'pending-two@example.com',
+        'status' => UserStatus::Pending,
+    ]);
+
+    $this->actingAs($administrator)
+        ->get(route('users.index'))
+        ->assertOk()
+        ->assertSee('2 accounts waiting for approval.')
+        ->assertSeeInOrder([$pendingTwo->email, $pendingOne->email, $active->email]);
+});
+
+it('renders user actions in a side drawer with grouped controls and hides unavailable management actions', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $staff = User::factory()->create(['role' => Role::Receiving, 'division' => Division::EDP]);
+    $otherAdministrator = User::factory()->create(['role' => Role::Administrator]);
+
+    $response = $this->actingAs($administrator)->get(route('users.index'))->assertOk();
+
+    $response->assertSee('user-manage-dialog', false)
+        ->assertSee('open-user-manage', false)
+        ->assertDontSee('<details', false)
+        ->assertSeeInOrder(['Role and division', 'Nothing changes until you save.', 'Save changes', 'Security', 'Danger zone'])
+        ->assertSee('Reset password')
+        ->assertDontSee('data-template-id="manage-user-'.$otherAdministrator->user_id.'"', false);
+
+    expect($staff->role)->toBe(Role::Receiving)
+        ->and($staff->division)->toBe(Division::EDP);
+});
+
 it('approves pending users and records the old and new state to audit', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $pending = User::factory()->create(['status' => UserStatus::Pending]);
@@ -84,7 +129,9 @@ it('updates a user role from the role management form', function () {
         ->get(route('users.index'))
         ->assertOk()
         ->assertSee('type="submit"', false)
-        ->assertSee('Update role');
+        ->assertSee('Role and division')
+        ->assertSee('Nothing changes until you save.')
+        ->assertSee('Save changes');
 
     $this->patch(route('users.role', $staff), ['role' => Role::Receiving->value])->assertRedirect();
     expect($staff->refresh()->role)->toBe(Role::Receiving);
@@ -98,7 +145,9 @@ it('updates a user division from the division management form', function () {
         ->get(route('users.index'))
         ->assertOk()
         ->assertSee('type="submit"', false)
-        ->assertSee('Update division');
+        ->assertSee('Role and division')
+        ->assertSee('Nothing changes until you save.')
+        ->assertSee('Save changes');
 
     $this->patch(route('users.division', $staff), ['division' => Division::EDP->value])->assertRedirect();
     expect($staff->refresh()->division)->toBe(Division::EDP);
@@ -112,7 +161,7 @@ it('generates a one-time password and requires the employee to change it', funct
         ->get(route('users.index'))
         ->assertOk()
         ->assertSee('Reset password')
-        ->assertSee('Reset password for')
+        ->assertSee('data-user-name="'.$staff->full_name.'"', false)
         ->assertDontSee('name="password"');
 
     $response = $this->actingAs($administrator)->putJson(route('users.password', $staff));
@@ -274,7 +323,7 @@ it('reactivates an inactive account', function () {
     $this->actingAs($administrator)
         ->get(route('users.index'))
         ->assertOk()
-        ->assertSee('type="submit"')
+        ->assertSee('type="submit"', false)
         ->assertSee('Reactivate');
 
     $this->patch(route('users.reactivate', $inactive))->assertRedirect();
