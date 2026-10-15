@@ -463,6 +463,7 @@ class ItSupportRequestController extends Controller
                     : ItSupportRequestStatus::Submitted;
                 $supportRequest = $user->itSupportRequests()->create([
                     'request_type_id' => $requestType->getKey(),
+                    'priority' => $request->validated('priority'),
                     'summary' => $requestType->name,
                     'requester_name' => $user->full_name,
                     'division' => $user->division->value,
@@ -484,7 +485,14 @@ class ItSupportRequestController extends Controller
                     ]);
                 }
 
-                $auditLogger->record($supportRequest, $user, 'submitted', null, $status);
+                $auditLogger->record(
+                    $supportRequest,
+                    $user,
+                    'submitted',
+                    null,
+                    $status,
+                    'Priority: '.\Illuminate\Support\Str::headline($supportRequest->priority->value),
+                );
 
                 foreach ($request->file('attachments', []) as $file) {
                     $path = $file->store('it-support-requests', 'private');

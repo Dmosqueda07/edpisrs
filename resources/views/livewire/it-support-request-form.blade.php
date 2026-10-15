@@ -18,6 +18,35 @@
             </div>
         </section>
 
+        <section class="grid gap-4 md:grid-cols-3 md:items-start" aria-labelledby="request-priority-heading">
+            <fieldset class="md:col-span-2">
+                <legend id="request-priority-heading" class="text-lg font-medium text-gray-900">Priority <span aria-hidden="true">*</span></legend>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    @foreach ([
+                        'low' => ['Low', 'Not urgent, can wait'],
+                        'normal' => ['Normal', 'Default, regular work'],
+                        'high' => ['High', 'Affects my work'],
+                        'urgent' => ['Urgent', 'Work is stopped'],
+                    ] as $priorityValue => [$priorityLabel, $priorityHint])
+                        <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 p-4 hover:border-blue-400 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                            <input type="radio" name="priority" value="{{ $priorityValue }}" @checked(old('priority', 'normal') === $priorityValue)
+                                required class="mt-1 border-gray-300 text-blue-700 focus:ring-blue-600">
+                            <span>
+                                <span class="block text-sm font-semibold text-gray-900">{{ $priorityLabel }}</span>
+                                <span class="mt-1 block text-sm text-gray-600">{{ $priorityHint }}</span>
+                            </span>
+                        </label>
+                    @endforeach
+                </div>
+                @error('priority')
+                    <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                @enderror
+            </fieldset>
+            <p class="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                For urgent concerns requiring immediate assistance, coordinate directly with the EDP IT Support Team.
+            </p>
+        </section>
+
         <section>
             <fieldset>
                 <legend class="text-lg font-medium text-gray-900">Type of IT Support Needed <span aria-hidden="true">*</span></legend>

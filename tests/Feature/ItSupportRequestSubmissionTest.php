@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\Division;
+use App\Enums\ItSupportRequestPriority;
 use App\Livewire\ItSupportRequestForm;
 use App\Mail\ItSupportRequestReceived;
 use App\Models\ItSupportRequest;
@@ -31,8 +32,12 @@ it('displays the request form with the signed-in user information and all suppor
         ->assertOk()
         ->assertSee('Avery Employee')
         ->assertSee(Division::EDP->value)
-        ->assertSee('For urgent concerns, coordinate directly')
+        ->assertSee('For urgent concerns requiring immediate assistance, coordinate directly')
         ->assertSee('EDP IT Support Team.')
+        ->assertSee('Not urgent, can wait')
+        ->assertSee('Default, regular work')
+        ->assertSee('Affects my work')
+        ->assertSee('Work is stopped')
         ->assertSee('Check / Repair Computer')
         ->assertSee('Other IT Request');
 });
@@ -92,6 +97,7 @@ it('stores a certified request and private attachment and queues confirmation em
         ->and($supportRequest->division)->toBe(Division::EDP->value)
         ->and($supportRequest->request_type_id)->toBe($requestType->getKey())
         ->and($supportRequest->support_type)->toBe($requestType->name)
+        ->and($supportRequest->priority)->toBe(ItSupportRequestPriority::Normal)
         ->and($supportRequest->detailsRows()->firstOrFail()->field_label)->toBe($requestType->follow_up_question)
         ->and($supportRequest->detailsRows()->firstOrFail()->field_value)->toBe('Computer does not start after a restart.')
         ->and($supportRequest->certified_at)->not->toBeNull()
@@ -100,14 +106,19 @@ it('stores a certified request and private attachment and queues confirmation em
     $attachment = $supportRequest->attachments()->firstOrFail();
     Storage::disk('private')->assertExists($attachment->file_path);
     expect($attachment->uploaded_by)->toBe($user->user_id)
-        ->and($supportRequest->logs()->where('action', 'submitted')->exists())->toBeTrue()
+        ->and($supportRequest->logs()->where('action', 'submitted')->value('remarks'))->toBe('Priority: Normal')
         ->and($supportRequest->logs()->where('action', 'attachment_uploaded')->exists())->toBeTrue();
 
     $this->actingAs($user)
         ->get(route('it-support-requests.show', $supportRequest))
         ->assertOk()
         ->assertSee('Computer does not start after a restart.')
+        ->assertSee('Normal')
         ->assertSee('computer.pdf');
+
+    Livewire::actingAs($user)
+        ->test(\App\Livewire\MyItSupportRequests::class)
+        ->assertSee('Normal');
 
     $this->get(route('it-support-requests.attachments.download', [$supportRequest, $attachment]))
         ->assertOk()
@@ -123,6 +134,54 @@ it('stores a certified request and private attachment and queues confirmation em
         ->get(route('it-support-requests.attachments.download', [$otherRequest, $attachment]))
         ->assertNotFound();
     Mail::assertQueued(ItSupportRequestReceived::class, fn (ItSupportRequestReceived $mail) => $mail->hasTo($user->email));
+});
+
+it('allows the requester to view their request when the database returns the user id as a string', function () {
+    $user = User::factory()->create(['role' => \App\Enums\Role::Staff]);
+    $supportRequest = ItSupportRequest::factory()->for($user, 'requester')->create();
+    $supportRequest->setAttribute('requester_user_id', (string) $user->getKey());
+
+    $this->actingAs($user)
+        ->get(route('it-support-requests.show', $supportRequest))
+        ->assertOk();
+});
+
+it('accepts and records each valid request priority', function () {
+    Mail::fake();
+    $requestType = RequestType::where('key', 'other-it-request')->firstOrFail();
+
+    foreach (ItSupportRequestPriority::cases() as $priority) {
+        $user = User::factory()->create();
+        $this->actingAs($user)->post(route('it-support-requests.store'), [
+            'request_type_id' => $requestType->getKey(),
+            'answers' => ['details' => 'Please help with this request.'],
+            'priority' => $priority->value,
+            'certification' => '1',
+        ])->assertRedirect();
+
+        $supportRequest = $user->itSupportRequests()->latest('id')->firstOrFail();
+        expect($supportRequest->priority)->toBe($priority)
+            ->and($supportRequest->logs()->where('action', 'submitted')->value('remarks'))
+            ->toBe('Priority: '.\Illuminate\Support\Str::headline($priority->value));
+
+        $this->get(route('it-support-requests.show', $supportRequest))
+            ->assertOk()
+            ->assertSee(\Illuminate\Support\Str::headline($priority->value));
+    }
+});
+
+it('rejects a priority value outside the priority enum', function () {
+    $user = User::factory()->create();
+    $requestType = RequestType::where('key', 'other-it-request')->firstOrFail();
+
+    $this->actingAs($user)->post(route('it-support-requests.store'), [
+        'request_type_id' => $requestType->getKey(),
+        'answers' => ['details' => 'Please help with this request.'],
+        'priority' => 'critical',
+        'certification' => '1',
+    ])->assertSessionHasErrors('priority');
+
+    expect(ItSupportRequest::query()->count())->toBe(0);
 });
 
 it('accepts a request without an optional attachment', function () {

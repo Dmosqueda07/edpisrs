@@ -29,6 +29,14 @@
                         <dt class="text-sm font-medium text-gray-500">Status</dt>
                         <dd class="mt-1 text-sm text-gray-900">{{ \Illuminate\Support\Str::headline($supportRequest->status->value) }}</dd>
                     </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Priority</dt>
+                        <dd class="mt-1">
+                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ match ($supportRequest->priority) { \App\Enums\ItSupportRequestPriority::Urgent => 'bg-red-100 text-red-800', \App\Enums\ItSupportRequestPriority::High => 'bg-orange-100 text-orange-800', \App\Enums\ItSupportRequestPriority::Normal => 'bg-blue-100 text-blue-800', default => 'bg-gray-100 text-gray-700' } }}">
+                                {{ \Illuminate\Support\Str::headline($supportRequest->priority->value) }}
+                            </span>
+                        </dd>
+                    </div>
                     @forelse ($supportRequest->detailsRows as $detail)
                         <div class="sm:col-span-2">
                             <dt class="text-sm font-medium text-gray-500">{{ $detail->field_label }}</dt>

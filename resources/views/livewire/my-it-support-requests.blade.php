@@ -27,6 +27,7 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Details</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Priority</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Submitted</th>
                         <th scope="col" class="px-6 py-3"><span class="sr-only">View request</span></th>
                     </tr>
@@ -38,6 +39,11 @@
                             <td class="px-6 py-4 text-sm text-gray-700">{{ $supportRequest->support_type }}</td>
                             <td class="px-6 py-4 text-sm text-gray-700">{{ \Illuminate\Support\Str::limit($supportRequest->details, 100) }}</td>
                             <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-700">{{ \Illuminate\Support\Str::headline($supportRequest->status->value) }}</td>
+                            <td class="whitespace-nowrap px-6 py-4">
+                                <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ match ($supportRequest->priority) { \App\Enums\ItSupportRequestPriority::Urgent => 'bg-red-100 text-red-800', \App\Enums\ItSupportRequestPriority::High => 'bg-orange-100 text-orange-800', \App\Enums\ItSupportRequestPriority::Normal => 'bg-blue-100 text-blue-800', default => 'bg-gray-100 text-gray-700' } }}">
+                                    {{ \Illuminate\Support\Str::headline($supportRequest->priority->value) }}
+                                </span>
+                            </td>
                             <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-700">{{ $supportRequest->created_at->format('M j, Y g:i A') }}</td>
                             <td class="whitespace-nowrap px-6 py-4 text-right text-sm">
                                 <a href="{{ route('it-support-requests.show', $supportRequest) }}" class="font-medium text-blue-700 hover:text-blue-900">

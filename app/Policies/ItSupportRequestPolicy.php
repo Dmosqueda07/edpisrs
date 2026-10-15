@@ -18,8 +18,8 @@ class ItSupportRequestPolicy
     public function view(User $user, ItSupportRequest $itSupportRequest): bool
     {
         return in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true)
-            || $itSupportRequest->requester_user_id === $user->user_id
-            || $itSupportRequest->assigned_technician_id === $user->user_id
+            || $this->sameUserId($itSupportRequest->requester_user_id, $user)
+            || $this->sameUserId($itSupportRequest->assigned_technician_id, $user)
             || $this->isEligibleApprover($user, $itSupportRequest);
     }
 
@@ -86,7 +86,7 @@ class ItSupportRequestPolicy
 
     public function confirmCompletion(User $user, ItSupportRequest $itSupportRequest): bool
     {
-        return $itSupportRequest->requester_user_id === $user->user_id
+        return $this->sameUserId($itSupportRequest->requester_user_id, $user)
             && $itSupportRequest->status === ItSupportRequestStatus::Resolved;
     }
 
@@ -104,7 +104,7 @@ class ItSupportRequestPolicy
             return true;
         }
 
-        return $itSupportRequest->requester_user_id === $user->user_id
+        return $this->sameUserId($itSupportRequest->requester_user_id, $user)
             && in_array($itSupportRequest->status, [
                 ItSupportRequestStatus::Submitted,
                 ItSupportRequestStatus::PendingApproval,
@@ -113,7 +113,7 @@ class ItSupportRequestPolicy
 
     public function reopen(User $user, ItSupportRequest $itSupportRequest): bool
     {
-        return $itSupportRequest->requester_user_id === $user->user_id
+        return $this->sameUserId($itSupportRequest->requester_user_id, $user)
             && $itSupportRequest->status === ItSupportRequestStatus::Resolved
             && $itSupportRequest->resolved_at !== null
             && $itSupportRequest->resolved_at->greaterThanOrEqualTo(now()->subDays(3))
@@ -124,7 +124,7 @@ class ItSupportRequestPolicy
     {
         return $itSupportRequest->status !== ItSupportRequestStatus::Closed
             && (
-                $itSupportRequest->requester_user_id === $user->user_id
+                $this->sameUserId($itSupportRequest->requester_user_id, $user)
                 || $this->isAssignedTechnician($user, $itSupportRequest)
             );
     }
@@ -147,8 +147,13 @@ class ItSupportRequestPolicy
 
     private function isAssignedTechnician(User $user, ItSupportRequest $itSupportRequest): bool
     {
-        return $itSupportRequest->assigned_technician_id === $user->user_id
+        return $this->sameUserId($itSupportRequest->assigned_technician_id, $user)
             && User::technicians()->whereKey($user->getKey())->exists();
+    }
+
+    private function sameUserId(int|string|null $userId, User $user): bool
+    {
+        return $userId !== null && (string) $userId === (string) $user->getKey();
     }
 
     private function isActive(User $user): bool

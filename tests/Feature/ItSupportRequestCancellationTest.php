@@ -6,6 +6,7 @@ use App\Models\ItSupportRequest;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Gate;
 
 uses(RefreshDatabase::class);
 
@@ -45,6 +46,16 @@ it('allows an administrator to cancel an unresolved request and denies cancellat
 
     expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::Cancelled)
         ->and($supportRequest->logs()->where('action', 'cancelled')->value('user_id'))->toBe($administrator->user_id);
+});
+
+it('keeps the cancellation action available when the database returns the requester id as a string', function () {
+    $requester = User::factory()->create(['role' => Role::Staff]);
+    $supportRequest = ItSupportRequest::factory()
+        ->for($requester, 'requester')
+        ->create(['status' => ItSupportRequestStatus::Submitted]);
+    $supportRequest->setAttribute('requester_user_id', (string) $requester->getKey());
+
+    expect(Gate::forUser($requester)->allows('cancel', $supportRequest))->toBeTrue();
 });
 
 it('does not allow cancellation after resolution or repeated cancellation', function () {
