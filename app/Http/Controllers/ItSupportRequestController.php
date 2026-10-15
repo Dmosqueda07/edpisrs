@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Notifications\RequestAssigned;
 use App\Services\ItSupportRequestAuditLogger;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -159,6 +160,19 @@ class ItSupportRequestController extends Controller
         $decision = ApprovalDecision::from($request->validated('decision'));
         $user = $request->user();
 
+        if ((string) $itSupportRequest->requester_user_id === (string) $user->getKey()) {
+            $auditLogger->record(
+                $itSupportRequest,
+                $user,
+                'approval_blocked_self',
+                $itSupportRequest->status,
+                $itSupportRequest->status,
+                'Blocked self-submission decision attempt: '.$decision->value.'.',
+            );
+
+            Gate::authorize('approve', $itSupportRequest);
+        }
+
         DB::transaction(function () use ($itSupportRequest, $decision, $request, $user, $auditLogger) {
             $lockedRequest = ItSupportRequest::query()
                 ->whereKey($itSupportRequest->getKey())
@@ -197,6 +211,9 @@ class ItSupportRequestController extends Controller
     {
         $this->authorize('view', $itSupportRequest);
         $canViewInternalNotes = Gate::allows('viewInternalNotes', $itSupportRequest);
+        $cancellationReason = $itSupportRequest->status === ItSupportRequestStatus::Cancelled
+            ? $itSupportRequest->logs()->where('action', 'cancelled')->latest('created_at')->value('remarks')
+            : null;
         $itSupportRequest->load([
             'comments' => fn ($query) => $query
                 ->when(! $canViewInternalNotes, fn ($comments) => $comments->where('is_internal', false))
@@ -208,9 +225,42 @@ class ItSupportRequestController extends Controller
             'approvals',
         ]);
 
+        $privateDisk = Storage::disk('private');
+        $attachments = $itSupportRequest->attachments
+            ->map(function (ItSupportRequestAttachment $attachment) use ($itSupportRequest, $privateDisk): array {
+                $mimeType = $privateDisk->exists($attachment->file_path)
+                    ? ($privateDisk->mimeType($attachment->file_path) ?: $attachment->mime_type)
+                    : $attachment->mime_type;
+
+                return [
+                    'name' => $attachment->original_name,
+                    'size' => $attachment->size,
+                    'mime_type' => $mimeType,
+                    'is_image' => str_starts_with((string) $mimeType, 'image/'),
+                    'url' => route('it-support-requests.attachments.download', [$itSupportRequest, $attachment]),
+                ];
+            })
+            ->values();
+
+        if ($attachments->isEmpty() && $itSupportRequest->attachment_path) {
+            $legacyPath = $itSupportRequest->attachment_path;
+            if ($privateDisk->exists($legacyPath)) {
+                $mimeType = $privateDisk->mimeType($legacyPath);
+                $attachments->push([
+                    'name' => basename($legacyPath),
+                    'size' => $privateDisk->size($legacyPath),
+                    'mime_type' => $mimeType,
+                    'is_image' => str_starts_with((string) $mimeType, 'image/'),
+                    'url' => route('it-support-requests.attachment', $itSupportRequest),
+                ]);
+            }
+        }
+
         return view('it-support-requests.show', [
             'supportRequest' => $itSupportRequest,
             'canViewInternalNotes' => $canViewInternalNotes,
+            'attachments' => $attachments,
+            'cancellationReason' => $cancellationReason,
         ]);
     }
 
@@ -277,12 +327,12 @@ class ItSupportRequestController extends Controller
         Request $request,
         ItSupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         $validated = $request->validate([
-            'reason' => ['nullable', 'string', 'max:2000'],
+            'reason' => ['nullable', 'string', 'max:300'],
         ]);
 
-        return DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): RedirectResponse {
+        DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): void {
             $lockedRequest = ItSupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
             $this->authorize('cancel', $lockedRequest);
             $fromStatus = $lockedRequest->status;
@@ -297,8 +347,15 @@ class ItSupportRequestController extends Controller
                 $validated['reason'] ?? null,
             );
 
-            return redirect()->route('it-support-requests.show', $lockedRequest);
         });
+
+        $message = "Request {$itSupportRequest->ticket_no} was cancelled.";
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message, 'status' => 'cancelled']);
+        }
+
+        return redirect()->route('it-support-requests.show', $itSupportRequest)->with('status', $message);
     }
 
     public function reopen(
@@ -399,13 +456,20 @@ class ItSupportRequestController extends Controller
         $this->authorize('view', $itSupportRequest);
 
         abort_unless($itSupportRequest->attachment_path, 404);
-        abort_unless(Storage::disk('local')->exists($itSupportRequest->attachment_path), 404);
+        $disk = Storage::disk('private');
+        abort_unless($disk->exists($itSupportRequest->attachment_path), 404);
 
-        $extension = pathinfo($itSupportRequest->attachment_path, PATHINFO_EXTENSION);
+        $mimeType = $disk->mimeType($itSupportRequest->attachment_path);
+        abort_unless($this->isPreviewableAttachmentMimeType($mimeType), 404);
 
-        return Storage::disk('local')->download(
+        return $disk->response(
             $itSupportRequest->attachment_path,
-            "it-support-request-{$itSupportRequest->getKey()}.{$extension}",
+            basename($itSupportRequest->attachment_path),
+            [
+                'Content-Type' => $mimeType,
+                'X-Content-Type-Options' => 'nosniff',
+            ],
+            'inline',
         );
     }
 
@@ -414,13 +478,32 @@ class ItSupportRequestController extends Controller
         ItSupportRequestAttachment $attachment,
     ): StreamedResponse {
         $this->authorize('view', $itSupportRequest);
-        abort_unless($attachment->it_support_request_id === $itSupportRequest->getKey(), 404);
-        abort_unless(Storage::disk('private')->exists($attachment->file_path), 404);
+        abort_unless((string) $attachment->it_support_request_id === (string) $itSupportRequest->getKey(), 404);
+        $disk = Storage::disk('private');
+        abort_unless($disk->exists($attachment->file_path), 404);
+        $mimeType = $disk->mimeType($attachment->file_path) ?: $attachment->mime_type;
+        abort_unless($this->isPreviewableAttachmentMimeType($mimeType), 404);
 
-        return Storage::disk('private')->download(
+        return $disk->response(
             $attachment->file_path,
             $attachment->original_name,
+            [
+                'Content-Type' => $mimeType,
+                'X-Content-Type-Options' => 'nosniff',
+            ],
+            'inline',
         );
+    }
+
+    private function isPreviewableAttachmentMimeType(?string $mimeType): bool
+    {
+        return in_array($mimeType, [
+            'application/pdf',
+            'image/jpeg',
+            'image/png',
+            'image/gif',
+            'image/webp',
+        ], true);
     }
 
     public function downloadProof(
@@ -464,7 +547,7 @@ class ItSupportRequestController extends Controller
                 $supportRequest = $user->itSupportRequests()->create([
                     'request_type_id' => $requestType->getKey(),
                     'priority' => $request->validated('priority'),
-                    'summary' => $requestType->name,
+                    'summary' => $request->validated('summary'),
                     'requester_name' => $user->full_name,
                     'division' => $user->division->value,
                     'support_type' => $requestType->name,

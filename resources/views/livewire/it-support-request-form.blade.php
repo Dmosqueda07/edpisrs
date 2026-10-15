@@ -3,6 +3,17 @@
         @csrf
 
         <section>
+            <label for="request-short-title" class="block text-lg font-medium text-gray-900">Short title <span aria-hidden="true">*</span></label>
+            <p class="mt-1 text-sm text-gray-600">Briefly describe the issue or assistance you need.</p>
+            <input id="request-short-title" name="summary" type="text" required maxlength="120" value="{{ old('summary') }}"
+                placeholder="Example: Printer on the 2nd floor won't print"
+                class="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-600 focus:ring-blue-600">
+            @error('summary')
+                <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
+            @enderror
+        </section>
+
+        <section>
             <h2 class="text-lg font-medium text-gray-900">Requester information</h2>
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>

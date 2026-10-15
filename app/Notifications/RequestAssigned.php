@@ -26,10 +26,11 @@ class RequestAssigned extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('IT support request assigned')
+            ->subject('IT support request assigned: '.($this->supportRequest->summary ?: $this->supportRequest->support_type))
             ->greeting('An IT support request has been assigned.')
             ->line('Ticket: '.$this->supportRequest->ticket_no)
-            ->line('Request: '.$this->supportRequest->summary)
+            ->line('Request: '.($this->supportRequest->summary ?: $this->supportRequest->support_type))
+            ->line('Type: '.$this->supportRequest->support_type)
             ->line('Assigned technician: '.$this->supportRequest->technician?->full_name)
             ->action('View request', route('it-support-requests.show', $this->supportRequest));
     }

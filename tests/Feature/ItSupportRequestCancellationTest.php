@@ -23,6 +23,11 @@ it('allows a requester to cancel submitted or pending approval requests and audi
     expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::Cancelled)
         ->and($supportRequest->logs()->where('action', 'cancelled')->value('from_status'))->toBe($status->value)
         ->and($supportRequest->logs()->where('action', 'cancelled')->value('remarks'))->toBe('No longer needed.');
+
+    $this->get(route('it-support-requests.show', $supportRequest))
+        ->assertOk()
+        ->assertSee('Cancellation reason')
+        ->assertSee('No longer needed.');
 })->with([
     'submitted' => [ItSupportRequestStatus::Submitted],
     'pending approval' => [ItSupportRequestStatus::PendingApproval],
@@ -46,6 +51,31 @@ it('allows an administrator to cancel an unresolved request and denies cancellat
 
     expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::Cancelled)
         ->and($supportRequest->logs()->where('action', 'cancelled')->value('user_id'))->toBe($administrator->user_id);
+});
+
+it('returns a cancellation success response to the modal and limits the optional reason to 300 characters', function () {
+    $requester = User::factory()->create();
+    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+        'status' => ItSupportRequestStatus::Submitted,
+    ]);
+
+    $this->actingAs($requester)
+        ->withHeader('Accept', 'application/json')
+        ->patch(route('it-support-requests.cancel', $supportRequest), ['reason' => 'Done.'])
+        ->assertOk()
+        ->assertJsonPath('status', 'cancelled')
+        ->assertJsonPath('message', "Request {$supportRequest->ticket_no} was cancelled.");
+
+    $anotherRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+        'status' => ItSupportRequestStatus::Submitted,
+    ]);
+
+    $this->withHeader('Accept', 'application/json')
+        ->patch(route('it-support-requests.cancel', $anotherRequest), ['reason' => str_repeat('x', 301)])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('reason');
+
+    expect($anotherRequest->fresh()->status)->toBe(ItSupportRequestStatus::Submitted);
 });
 
 it('keeps the cancellation action available when the database returns the requester id as a string', function () {

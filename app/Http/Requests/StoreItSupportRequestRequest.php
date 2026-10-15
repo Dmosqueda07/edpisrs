@@ -46,6 +46,7 @@ class StoreItSupportRequestRequest extends FormRequest
         $definition = collect(config('request_forms.request_types'))
             ->firstWhere('key', $requestType?->key);
         $rules = [
+            'summary' => ['required', 'string', 'max:120'],
             'priority' => ['required', Rule::enum(ItSupportRequestPriority::class)],
             'request_type_id' => [
                 'required',

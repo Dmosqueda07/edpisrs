@@ -123,7 +123,8 @@
                                     <span class="block text-xs text-gray-500">#{{ $supportRequest->getKey() }}</span>
                                 </td>
                                 <td class="px-5 py-4 text-sm text-gray-700">
-                                    <div class="font-medium">{{ $supportRequest->requestType?->name ?? $supportRequest->support_type }}</div>
+                                    <div class="font-medium">{{ $supportRequest->summary ?: $supportRequest->support_type }}</div>
+                                    <div class="text-xs text-gray-500">{{ $supportRequest->requestType?->name ?? $supportRequest->support_type }}</div>
                                     <div>{{ $supportRequest->requester_name }}</div>
                                     <div class="text-xs text-gray-500">{{ $supportRequest->division }}</div>
                                     <div class="mt-1 text-xs text-gray-500">{{ \Illuminate\Support\Str::limit($supportRequest->details, 100) }}</div>

@@ -37,7 +37,8 @@ class ItSupportRequestPolicy
 
     public function approve(User $user, ItSupportRequest $itSupportRequest): bool
     {
-        return $itSupportRequest->status === ItSupportRequestStatus::PendingApproval
+        return ! $this->sameUserId($itSupportRequest->requester_user_id, $user)
+            && $itSupportRequest->status === ItSupportRequestStatus::PendingApproval
             && $this->isEligibleApprover($user, $itSupportRequest);
     }
 

@@ -20,7 +20,7 @@ class ItSupportRequestApprovalQueue extends Component
         Gate::authorize('viewApprovalQueue', ItSupportRequest::class);
 
         $requests = ItSupportRequest::query()
-            ->with('requester')
+            ->with(['requester', 'detailsRows'])
             ->where('status', ItSupportRequestStatus::PendingApproval->value)
             ->whereJsonContains('approval_roles', $user->role->value)
             ->when(

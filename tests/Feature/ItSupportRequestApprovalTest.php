@@ -68,6 +68,7 @@ it('submits sensitive request types as pending approval with a rule snapshot', f
 
     $this->actingAs($requester)
         ->post(route('it-support-requests.store'), [
+            'summary' => 'Records extraction request',
             'request_type_id' => $requestType->getKey(),
             'details' => 'Extract the requested records for review.',
             'certification' => '1',
@@ -108,8 +109,34 @@ it('shows only pending requests eligible for the signed-in approver', function (
 
     Livewire::actingAs($administrator)
         ->test(ItSupportRequestApprovalQueue::class)
-        ->assertSee('#'.$eligibleRequest->getKey())
+        ->assertSee($eligibleRequest->ticket_no)
         ->assertSee($eligibleRequest->requester_name);
+});
+
+it('shows approval context and priority for pending sensitive requests', function () {
+    $approver = User::factory()->create(['role' => Role::Administrator]);
+    $supportRequest = ItSupportRequest::factory()
+        ->for($approver, 'requester')
+        ->create([
+            'status' => ItSupportRequestStatus::PendingApproval,
+            'requires_approval' => true,
+            'approval_roles' => [Role::Administrator->value],
+            'priority' => \App\Enums\ItSupportRequestPriority::Urgent,
+            'requested_at' => now()->subDays(2),
+            'details' => 'Legacy detail should not be shown when answers exist.',
+        ]);
+    $supportRequest->detailsRows()->createMany([
+        ['field_key' => 'file', 'field_label' => 'File / folder / system', 'field_value' => 'Payroll archive'],
+        ['field_key' => 'reason', 'field_label' => 'Reason', 'field_value' => 'Needed for month-end audit'],
+    ]);
+
+    Livewire::actingAs($approver)
+        ->test(ItSupportRequestApprovalQueue::class)
+        ->assertSee('Payroll archive')
+        ->assertSee('Needed for month-end audit')
+        ->assertSee('Urgent')
+        ->assertSee('Waiting 2 days')
+        ->assertSee('Review');
 });
 
 it('approves a pending request once and makes it available for assignment', function () {
@@ -157,6 +184,54 @@ it('approves a pending request once and makes it available for assignment', func
     ])->assertForbidden();
 
     expect($supportRequest->approvals()->count())->toBe(1);
+});
+
+it('blocks self-approval by an administrator in policy and records the attempt', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $supportRequest = ItSupportRequest::factory()
+        ->for($administrator, 'requester')
+        ->create([
+            'status' => ItSupportRequestStatus::PendingApproval,
+            'requires_approval' => true,
+            'approval_roles' => [Role::Administrator->value, Role::SuperAdministrator->value],
+        ]);
+
+    $this->actingAs($administrator)
+        ->get(route('it-support-requests.show', $supportRequest))
+        ->assertOk()
+        ->assertDontSee('Approve request')
+        ->assertDontSee('Reject request');
+
+    $this->patch(route('it-support-requests.approval', $supportRequest), [
+        'decision' => ApprovalDecision::Approved->value,
+        'comment' => 'Self-approval attempt.',
+    ])->assertForbidden();
+
+    expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::PendingApproval)
+        ->and($supportRequest->approvals()->count())->toBe(0)
+        ->and($supportRequest->logs()->where('action', 'approval_blocked_self')->value('remarks'))
+        ->toBe('Blocked self-submission decision attempt: approved.');
+
+    $otherAdministrator = User::factory()->create(['role' => Role::SuperAdministrator]);
+    Livewire::actingAs($otherAdministrator)
+        ->test(ItSupportRequestApprovalQueue::class)
+        ->assertSee($supportRequest->ticket_no);
+
+    $superAdministrator = User::factory()->create(['role' => Role::SuperAdministrator]);
+    $superAdminRequest = ItSupportRequest::factory()
+        ->for($superAdministrator, 'requester')
+        ->create([
+            'status' => ItSupportRequestStatus::PendingApproval,
+            'requires_approval' => true,
+            'approval_roles' => [Role::SuperAdministrator->value],
+        ]);
+
+    $this->actingAs($superAdministrator)
+        ->patch(route('it-support-requests.approval', $superAdminRequest), [
+            'decision' => ApprovalDecision::Rejected->value,
+        ])->assertForbidden();
+
+    expect($superAdminRequest->logs()->where('action', 'approval_blocked_self')->exists())->toBeTrue();
 });
 
 it('rejects a request and prevents it from being assigned', function () {
@@ -269,6 +344,7 @@ it('lets city assessor approve any sensitive request and bypasses approval for o
     $normalType = RequestType::where('key', 'other-it-request')->firstOrFail();
     $this->actingAs($requester)
         ->post(route('it-support-requests.store'), [
+            'summary' => 'Standard assistance request',
             'request_type_id' => $normalType->getKey(),
             'details' => 'Please provide standard assistance.',
             'certification' => '1',

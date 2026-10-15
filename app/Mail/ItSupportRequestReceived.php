@@ -19,7 +19,7 @@ class ItSupportRequestReceived extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'IT Support Request Received',
+            subject: 'IT Support Request Received: '.($this->supportRequest->summary ?: $this->supportRequest->support_type),
         );
     }
 

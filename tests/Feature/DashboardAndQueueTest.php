@@ -11,8 +11,8 @@ use App\Models\RequestType;
 use App\Models\User;
 use App\Notifications\RequestAssigned;
 use App\Services\RequestOverdueQuery;
-use App\Support\WorkingDayCalculator;
 use Carbon\CarbonImmutable;
+use App\Support\WorkingDayCalculator;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -256,8 +256,8 @@ it('shows cards only to administrators and welcome actions without cards to othe
     Livewire::actingAs($requester)
         ->withQueryParams(['status' => 'submitted'])
         ->test(MyItSupportRequests::class)
-        ->assertSee('#'.$ownRequest->getKey())
-        ->assertDontSee('#'.$otherRequest->getKey());
+        ->assertSee($ownRequest->ticket_no)
+        ->assertDontSee($otherRequest->ticket_no);
 });
 
 it('restricts dashboard cards and the assigned queue to the two administrator roles', function () {
@@ -338,6 +338,85 @@ it('filters the queue by status, type, division, priority, and technician includ
         ->set('technician', 'unassigned')
         ->assertSee($unassigned->ticket_no)
         ->assertDontSee($match->ticket_no);
+});
+
+it('sorts assigned tickets by explicit priority order and then oldest first', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $requester = User::factory()->create();
+    $createAssigned = function (ItSupportRequestPriority $priority, string $requestedAt) use ($administrator, $requester) {
+        return makeDashboardRequest($requester, [
+            'assigned_technician_id' => $administrator->getKey(),
+            'priority' => $priority,
+            'requested_at' => $requestedAt,
+            'status' => ItSupportRequestStatus::Assigned,
+        ]);
+    };
+
+    $high = $createAssigned(ItSupportRequestPriority::High, '2026-10-01 09:00:00');
+    $urgentNew = $createAssigned(ItSupportRequestPriority::Urgent, '2026-10-05 09:00:00');
+    $normal = $createAssigned(ItSupportRequestPriority::Normal, '2026-09-30 09:00:00');
+    $urgentOld = $createAssigned(ItSupportRequestPriority::Urgent, '2026-09-20 09:00:00');
+    $low = $createAssigned(ItSupportRequestPriority::Low, '2026-09-01 09:00:00');
+
+    Livewire::actingAs($administrator)
+        ->test(\App\Livewire\AssignedItSupportRequests::class)
+        ->assertSeeInOrder([
+            $urgentOld->ticket_no,
+            $urgentNew->ticket_no,
+            $high->ticket_no,
+            $normal->ticket_no,
+            $low->ticket_no,
+        ]);
+});
+
+it('marks assigned tickets overdue after two working days without activity', function () {
+    CarbonImmutable::setTestNow('2026-10-12 12:00:00');
+    try {
+        $administrator = User::factory()->create(['role' => Role::Administrator]);
+        $requester = User::factory()->create();
+        $overdue = makeDashboardRequest($requester, [
+            'assigned_technician_id' => $administrator->getKey(),
+            'status' => ItSupportRequestStatus::Assigned,
+        ]);
+        DB::table('it_support_requests')->where('id', $overdue->getKey())->update([
+            'updated_at' => '2026-10-07 11:00:00',
+        ]);
+
+        Livewire::actingAs($administrator)
+            ->test(\App\Livewire\AssignedItSupportRequests::class)
+            ->assertSee('Overdue')
+            ->assertSee($overdue->ticket_no);
+    } finally {
+        CarbonImmutable::setTestNow();
+    }
+});
+
+it('shows the saved short title and request type on assigned request rows', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $requester = User::factory()->create();
+    $answerBacked = makeDashboardRequest($requester, [
+        'assigned_technician_id' => $administrator->getKey(),
+        'summary' => 'Payroll system unavailable',
+        'support_type' => 'Troubleshoot System / Application',
+        'details' => 'Legacy value must not take precedence.',
+    ]);
+    $answerBacked->detailsRows()->create([
+        'field_key' => 'system',
+        'field_label' => 'System',
+        'field_value' => 'Payroll system answer',
+    ]);
+    $legacy = makeDashboardRequest($requester, [
+        'assigned_technician_id' => $administrator->getKey(),
+        'summary' => 'Older request summary',
+        'details' => 'Legacy ticket fallback text.',
+    ]);
+
+    Livewire::actingAs($administrator)
+        ->test(\App\Livewire\AssignedItSupportRequests::class)
+        ->assertSee('Payroll system unavailable')
+        ->assertSee('Troubleshoot System / Application')
+        ->assertSee('Older request summary')
+        ->assertDontSee('Legacy value must not take precedence.');
 });
 
 it('filters the queue by requested date range and searches ticket number and requester name', function () {
@@ -454,7 +533,7 @@ it('notifies assigned technicians and requesters through the queue after assignm
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $requester = User::factory()->create();
     $technician = User::factory()->create(['division' => Division::EDP]);
-    $supportRequest = makeDashboardRequest($requester);
+    $supportRequest = makeDashboardRequest($requester, ['summary' => 'Printer jam on floor two']);
 
     $this->actingAs($administrator)
         ->patch(route('edp.it-support-requests.assign', $supportRequest), [
@@ -464,7 +543,11 @@ it('notifies assigned technicians and requesters through the queue after assignm
 
     Notification::assertSentTo($technician, RequestAssigned::class);
     Notification::assertSentTo($requester, RequestAssigned::class);
-    expect(new RequestAssigned($supportRequest->fresh()))->toBeInstanceOf(ShouldQueue::class);
+    $notification = new RequestAssigned($supportRequest->fresh());
+    $mail = $notification->toMail($technician);
+    expect($notification)->toBeInstanceOf(ShouldQueue::class)
+        ->and($mail->subject)->toContain('Printer jam on floor two')
+        ->and($mail->introLines)->toContain('Request: Printer jam on floor two');
 });
 
 it('logs administrator priority changes and rejects priority changes by other roles', function () {
