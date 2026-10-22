@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\Division;
+use App\Enums\ItSupportRequestPriority;
 use App\Enums\UserStatus;
 use App\Models\ItSupportRequest;
 use Illuminate\Foundation\Http\FormRequest;
@@ -32,6 +33,7 @@ class AssignItSupportRequestRequest extends FormRequest
                     ->where('status', UserStatus::Active->value)
                     ->where('is_active', true),
             ],
+            'priority' => ['sometimes', 'required', Rule::enum(ItSupportRequestPriority::class)],
         ];
     }
 }

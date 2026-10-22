@@ -17,8 +17,8 @@ use App\Models\RequestType;
 use App\Models\User;
 use App\Notifications\RequestAssigned;
 use App\Services\ItSupportRequestAuditLogger;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -72,9 +72,10 @@ class ItSupportRequestController extends Controller
         ItSupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
-        $technicianId = $request->validated('technician_id');
+        $validated = $request->validated();
+        $technicianId = $validated['technician_id'];
 
-        [$technician, $requester] = DB::transaction(function () use ($itSupportRequest, $technicianId, $request, $auditLogger) {
+        [$technician, $requester] = DB::transaction(function () use ($itSupportRequest, $technicianId, $request, $auditLogger, $validated) {
             $lockedRequest = ItSupportRequest::query()
                 ->whereKey($itSupportRequest->getKey())
                 ->lockForUpdate()
@@ -84,21 +85,38 @@ class ItSupportRequestController extends Controller
 
             $fromStatus = $lockedRequest->status;
             $previousTechnicianId = $lockedRequest->assigned_technician_id;
+            $oldPriority = $lockedRequest->priority;
             $technician = User::technicians()->findOrFail($technicianId);
             $lockedRequest->technician()->associate($technician);
             $lockedRequest->assigned_at = now();
-            $lockedRequest->status = ItSupportRequestStatus::Assigned;
+            if (in_array($fromStatus, [ItSupportRequestStatus::Submitted, ItSupportRequestStatus::Approved], true)) {
+                $lockedRequest->status = ItSupportRequestStatus::Assigned;
+            }
+            if (isset($validated['priority'])) {
+                $lockedRequest->priority = ItSupportRequestPriority::from($validated['priority']);
+            }
             $lockedRequest->save();
             $auditLogger->record(
                 $lockedRequest,
                 $request->user(),
                 $previousTechnicianId ? 'reassigned' : 'assigned',
                 $fromStatus,
-                ItSupportRequestStatus::Assigned,
+                $lockedRequest->status,
                 $previousTechnicianId
                     ? "Reassigned from technician user #{$previousTechnicianId} to {$technician->full_name}."
                     : "Assigned to {$technician->full_name}.",
             );
+
+            if ($oldPriority !== $lockedRequest->priority) {
+                $auditLogger->record(
+                    $lockedRequest,
+                    $request->user(),
+                    'priority_changed',
+                    $lockedRequest->status,
+                    $lockedRequest->status,
+                    "Priority changed from {$oldPriority->value} to {$lockedRequest->priority->value}.",
+                );
+            }
 
             return [$technician, $lockedRequest->requester()->firstOrFail()];
         });
@@ -574,7 +592,7 @@ class ItSupportRequestController extends Controller
                     'submitted',
                     null,
                     $status,
-                    'Priority: '.\Illuminate\Support\Str::headline($supportRequest->priority->value),
+                    'Priority: '.Str::headline($supportRequest->priority->value),
                 );
 
                 foreach ($request->file('attachments', []) as $file) {

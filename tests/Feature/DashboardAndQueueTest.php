@@ -4,6 +4,7 @@ use App\Enums\Division;
 use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
 use App\Enums\Role;
+use App\Livewire\AssignedItSupportRequests;
 use App\Livewire\ManageItSupportRequests;
 use App\Livewire\MyItSupportRequests;
 use App\Models\ItSupportRequest;
@@ -11,8 +12,8 @@ use App\Models\RequestType;
 use App\Models\User;
 use App\Notifications\RequestAssigned;
 use App\Services\RequestOverdueQuery;
-use Carbon\CarbonImmutable;
 use App\Support\WorkingDayCalculator;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -82,6 +83,68 @@ it('shows administrator card counts from one grouped status aggregate query', fu
         ->test(ManageItSupportRequests::class)
         ->assertSee($recentSubmitted->ticket_no)
         ->assertDontSee($oldSubmitted->ticket_no);
+});
+
+it('defaults the intake queue to Submitted and counts filtered statuses in one grouped query', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $requester = User::factory()->create();
+    $submitted = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::Submitted,
+        'priority' => ItSupportRequestPriority::Urgent,
+    ]);
+    $approved = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::Approved,
+        'priority' => ItSupportRequestPriority::Urgent,
+    ]);
+    makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::Assigned,
+        'priority' => ItSupportRequestPriority::Normal,
+    ]);
+    $cancelled = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::Cancelled,
+        'priority' => ItSupportRequestPriority::Urgent,
+    ]);
+
+    $statusCountQueries = [];
+    DB::listen(function ($query) use (&$statusCountQueries): void {
+        $sql = strtolower($query->sql);
+        if (str_contains($sql, 'request_count') && str_contains($sql, 'group by') && str_contains($sql, 'status')) {
+            $statusCountQueries[] = $query->sql;
+        }
+    });
+
+    Livewire::actingAs($administrator)
+        ->withQueryParams(['priority' => ItSupportRequestPriority::Urgent->value])
+        ->test(ManageItSupportRequests::class)
+        ->assertSet('status', ItSupportRequestStatus::Submitted->value)
+        ->assertSeeInOrder([
+            'data-status-tab="all"',
+            'data-status-tab="submitted"',
+            'data-status-tab="pending_approval"',
+            'data-status-tab="approved"',
+        ], false)
+        ->assertSee($submitted->ticket_no)
+        ->assertDontSee($approved->ticket_no)
+        ->assertSee('data-status-tab="submitted" data-status-count="1"', false)
+        ->assertSee('data-status-tab="approved" data-status-count="1"', false)
+        ->assertSee('data-status-tab="cancelled" data-status-count="1"', false)
+        ->assertSee('data-status-tab="all" data-status-count="3"', false);
+
+    expect($statusCountQueries)->toHaveCount(1);
+});
+
+it('uses only the explicit tab query parameter and keeps Submitted as the default', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+
+    Livewire::actingAs($administrator)
+        ->withQueryParams(['status' => ItSupportRequestStatus::Assigned->value])
+        ->test(ManageItSupportRequests::class)
+        ->assertSet('status', ItSupportRequestStatus::Submitted->value);
+
+    Livewire::actingAs($administrator)
+        ->withQueryParams(['tab' => ItSupportRequestStatus::Assigned->value, 'status' => ItSupportRequestStatus::Submitted->value])
+        ->test(ManageItSupportRequests::class)
+        ->assertSet('status', ItSupportRequestStatus::Assigned->value);
 });
 
 it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dashboard counts', function () {
@@ -174,18 +237,21 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
     Livewire::actingAs($administrator)
         ->withQueryParams(['awaiting_assignment' => '1'])
         ->test(ManageItSupportRequests::class)
+        ->set('status', '')
         ->assertSee($awaitingApproved->ticket_no)
         ->assertSee($awaitingSubmitted->ticket_no);
 
     Livewire::actingAs($administrator)
         ->withQueryParams(['resolved_today' => '1'])
         ->test(ManageItSupportRequests::class)
+        ->set('status', '')
         ->assertSee($resolvedToday->ticket_no)
         ->assertSee($closedResolvedToday->ticket_no);
 
     Livewire::actingAs($administrator)
         ->withQueryParams(['overdue' => '1'])
         ->test(ManageItSupportRequests::class)
+        ->set('status', '')
         ->assertSee($overdue->ticket_no)
         ->assertDontSee($active->ticket_no);
 });
@@ -318,26 +384,150 @@ it('filters the queue by status, type, division, priority, and technician includ
         ->assertSee($match->ticket_no)
         ->assertDontSee($unassigned->ticket_no);
     Livewire::actingAs($administrator)->test(ManageItSupportRequests::class)
+        ->set('status', '')
         ->set('requestType', (string) $type->getKey())
         ->assertSee($match->ticket_no)
         ->assertDontSee($unassigned->ticket_no);
     Livewire::actingAs($administrator)->test(ManageItSupportRequests::class)
+        ->set('status', '')
         ->set('division', Division::EDP->value)
         ->assertSee($match->ticket_no)
         ->assertDontSee($unassigned->ticket_no);
     Livewire::actingAs($administrator)->test(ManageItSupportRequests::class)
+        ->set('status', '')
         ->set('priority', ItSupportRequestPriority::Urgent->value)
         ->assertSee($match->ticket_no)
         ->assertDontSee($unassigned->ticket_no);
+
     Livewire::actingAs($administrator)->test(ManageItSupportRequests::class)
+        ->set('status', '')
         ->set('technician', (string) $technician->getKey())
         ->assertSee($match->ticket_no)
         ->assertDontSee($unassigned->ticket_no);
 
     Livewire::actingAs($administrator)->test(ManageItSupportRequests::class)
+        ->set('status', '')
         ->set('technician', 'unassigned')
         ->assertSee($unassigned->ticket_no)
         ->assertDontSee($match->ticket_no);
+});
+
+it('opens a compact assignment panel with technician workload and priority', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $requester = User::factory()->create();
+    $technician = User::factory()->create([
+        'first_name' => 'Panel',
+        'last_name' => 'Technician',
+        'division' => Division::EDP,
+    ]);
+    makeDashboardRequest($requester, [
+        'assigned_technician_id' => $technician->getKey(),
+        'status' => ItSupportRequestStatus::Assigned,
+    ]);
+    $submitted = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::Submitted,
+        'priority' => ItSupportRequestPriority::Normal,
+    ]);
+
+    Livewire::actingAs($administrator)
+        ->test(ManageItSupportRequests::class)
+        ->assertSee('Assign')
+        ->call('openAssignment', $submitted->getKey())
+        ->assertSee('Panel Technician · 1 open')
+        ->assertSee('Save')
+        ->assertSee('name="technician_id"', false)
+        ->assertSee('name="priority"', false)
+        ->assertSee(route('edp.it-support-requests.assign', $submitted), false)
+        ->assertSee('value="normal" selected', false);
+});
+
+it('shows assignment actions only on their matching status tabs and hides stale panels on tab changes', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $requester = User::factory()->create();
+    $technician = User::factory()->create(['division' => Division::EDP]);
+    $submitted = makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Submitted]);
+    $approved = makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Approved]);
+    $assigned = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::Assigned,
+        'assigned_technician_id' => $technician->getKey(),
+    ]);
+    $inProgress = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::InProgress,
+        'assigned_technician_id' => $technician->getKey(),
+    ]);
+    $onHold = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::OnHold,
+        'assigned_technician_id' => $technician->getKey(),
+    ]);
+    foreach ([
+        ItSupportRequestStatus::PendingApproval,
+        ItSupportRequestStatus::Resolved,
+        ItSupportRequestStatus::Cancelled,
+        ItSupportRequestStatus::Rejected,
+    ] as $status) {
+        makeDashboardRequest($requester, ['status' => $status]);
+    }
+    makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Closed]);
+
+    $component = Livewire::actingAs($administrator)
+        ->test(ManageItSupportRequests::class)
+        ->assertSee('Assign')
+        ->assertDontSee('Reassign')
+        ->call('openAssignment', $submitted->getKey())
+        ->assertSee('assignment-panel-'.$submitted->getKey(), false)
+        ->set('status', '')
+        ->assertDontSee('data-queue-action=', false)
+        ->assertDontSee('assignment-panel-'.$submitted->getKey(), false)
+        ->set('status', ItSupportRequestStatus::Approved->value)
+        ->assertSee('data-queue-action="assign"', false)
+        ->assertDontSee('data-queue-action="reassign"', false)
+        ->set('status', ItSupportRequestStatus::Assigned->value)
+        ->assertSee('data-queue-action="reassign"', false)
+        ->assertDontSee('data-queue-action="assign"', false)
+        ->set('status', ItSupportRequestStatus::InProgress->value)
+        ->assertSee('data-queue-action="reassign"', false)
+        ->set('status', ItSupportRequestStatus::OnHold->value)
+        ->assertSee('data-queue-action="reassign"', false)
+        ->set('status', ItSupportRequestStatus::Closed->value)
+        ->assertDontSee('data-queue-action=', false)
+        ->set('status', ItSupportRequestStatus::PendingApproval->value)
+        ->assertDontSee('data-queue-action=', false)
+        ->set('status', ItSupportRequestStatus::Resolved->value)
+        ->assertDontSee('data-queue-action=', false)
+        ->set('status', ItSupportRequestStatus::Cancelled->value)
+        ->assertDontSee('data-queue-action=', false)
+        ->set('status', ItSupportRequestStatus::Rejected->value)
+        ->assertDontSee('data-queue-action=', false);
+
+    expect($component->get('assignmentRequestId'))->toBeNull()
+        ->and($approved->exists)->toBeTrue()
+        ->and($assigned->exists)->toBeTrue()
+        ->and($inProgress->exists)->toBeTrue()
+        ->and($onHold->exists)->toBeTrue();
+});
+
+it('always includes request type requester and division in secondary metadata when title falls back to type', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $requester = User::factory()->create();
+    $type = RequestType::factory()->create(['name' => 'Password reset']);
+    $supportRequest = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::Submitted,
+        'request_type_id' => $type->getKey(),
+        'support_type' => $type->name,
+        'summary' => $type->name,
+        'details' => null,
+        'requester_name' => 'Queue metadata requester',
+        'division' => Division::EDP,
+    ]);
+
+    Livewire::actingAs($administrator)
+        ->test(ManageItSupportRequests::class)
+        ->assertSeeInOrder([
+            $type->name,
+            $type->name,
+            $supportRequest->requester_name,
+            Division::EDP->value,
+        ]);
 });
 
 it('sorts assigned tickets by explicit priority order and then oldest first', function () {
@@ -359,7 +549,7 @@ it('sorts assigned tickets by explicit priority order and then oldest first', fu
     $low = $createAssigned(ItSupportRequestPriority::Low, '2026-09-01 09:00:00');
 
     Livewire::actingAs($administrator)
-        ->test(\App\Livewire\AssignedItSupportRequests::class)
+        ->test(AssignedItSupportRequests::class)
         ->assertSeeInOrder([
             $urgentOld->ticket_no,
             $urgentNew->ticket_no,
@@ -383,7 +573,7 @@ it('marks assigned tickets overdue after two working days without activity', fun
         ]);
 
         Livewire::actingAs($administrator)
-            ->test(\App\Livewire\AssignedItSupportRequests::class)
+            ->test(AssignedItSupportRequests::class)
             ->assertSee('Overdue')
             ->assertSee($overdue->ticket_no);
     } finally {
@@ -412,7 +602,7 @@ it('shows the saved short title and request type on assigned request rows', func
     ]);
 
     Livewire::actingAs($administrator)
-        ->test(\App\Livewire\AssignedItSupportRequests::class)
+        ->test(AssignedItSupportRequests::class)
         ->assertSee('Payroll system unavailable')
         ->assertSee('Troubleshoot System / Application')
         ->assertSee('Older request summary')
@@ -470,6 +660,8 @@ it('displays technician workloads from one grouped count query', function () {
         'status' => ItSupportRequestStatus::Resolved,
     ]);
 
+    $component = Livewire::actingAs($administrator)->test(ManageItSupportRequests::class);
+
     $workloadQueries = [];
     DB::listen(function ($query) use (&$workloadQueries): void {
         if (str_contains(strtolower($query->sql), 'group by "assigned_technician_id"')) {
@@ -477,9 +669,7 @@ it('displays technician workloads from one grouped count query', function () {
         }
     });
 
-    $this->actingAs($administrator)
-        ->get(route('edp.it-support-requests.index'))
-        ->assertOk()
+    $component->call('toggleFilters')
         ->assertSee('Workload Technician (3 open)');
 
     expect($workloadQueries)->toHaveCount(1);
@@ -500,7 +690,7 @@ it('keeps active queue filters in the URL and pagination links', function () {
 
     $component = Livewire::actingAs($administrator)
         ->withQueryParams([
-            'status' => ItSupportRequestStatus::Submitted->value,
+            'tab' => ItSupportRequestStatus::Submitted->value,
             'request_type' => (string) $type->getKey(),
             'priority' => ItSupportRequestPriority::Urgent->value,
         ])
@@ -512,6 +702,7 @@ it('keeps active queue filters in the URL and pagination links', function () {
     $component->call('gotoPage', 2)
         ->assertSet('status', ItSupportRequestStatus::Submitted->value)
         ->assertSet('requestType', (string) $type->getKey())
+        ->assertSee('data-status-tab="submitted"', false)
         ->assertSee(ItSupportRequest::query()->orderBy('id')->skip(20)->value('ticket_no'));
 });
 

@@ -70,6 +70,8 @@ class ItSupportRequestPolicy
                 ItSupportRequestStatus::Submitted,
                 ItSupportRequestStatus::Approved,
                 ItSupportRequestStatus::Assigned,
+                ItSupportRequestStatus::InProgress,
+                ItSupportRequestStatus::OnHold,
             ], true);
     }
 
