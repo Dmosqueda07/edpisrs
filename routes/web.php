@@ -5,6 +5,7 @@ use App\Http\Controllers\ItSupportRequestController;
 use App\Http\Controllers\ProfileSignatureController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\ReportsController;
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Auth\ForcedPasswordChangeController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,6 +17,7 @@ Route::middleware(['auth', 'password.change'])->group(function () {
 
     Route::get('users', [UserManagementController::class, 'index'])->name('users.index');
     Route::get('reports', [ReportsController::class, 'index'])->middleware('can:viewReports')->name('reports.index');
+    Route::get('activity-logs', [ActivityLogController::class, 'index'])->middleware('can:viewActivityLogs')->name('activity-logs.index');
     Route::patch('users/{user}/approve', [UserManagementController::class, 'approve'])->name('users.approve');
     Route::patch('users/{user}/suspend', [UserManagementController::class, 'suspend'])->name('users.suspend');
     Route::patch('users/{user}/reactivate', [UserManagementController::class, 'reactivate'])->name('users.reactivate');

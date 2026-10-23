@@ -15,15 +15,20 @@ class DashboardController extends Controller
         abort_unless($user, 403);
 
         if (Gate::allows('viewAdminDashboard', ItSupportRequest::class)) {
-            $cards = $metrics->administratorCards();
-            $assignedCards = $metrics->technicianCards($user);
+            $adminDashboard = $metrics->administratorDashboard($user);
+            $cards = $adminDashboard['overview'];
+            $assignedCards = [];
+            $assignedCount = $adminDashboard['assignedCount'];
+            $shortcuts = $adminDashboard['shortcuts'];
             $dashboardType = 'administrator';
         } else {
             $cards = [];
             $assignedCards = [];
+            $assignedCount = 0;
+            $shortcuts = [];
             $dashboardType = 'employee';
         }
 
-        return view('dashboard', compact('cards', 'assignedCards', 'dashboardType'));
+        return view('dashboard', compact('cards', 'assignedCards', 'assignedCount', 'shortcuts', 'dashboardType'));
     }
 }

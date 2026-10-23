@@ -45,6 +45,11 @@ new class extends Component
                             {{ __('User management') }}
                         </x-nav-link>
                     @endcan
+                    @can('viewActivityLogs')
+                        <x-nav-link :href="route('activity-logs.index')" :active="request()->routeIs('activity-logs.*')" wire:navigate>
+                            {{ __('Activity logs') }}
+                        </x-nav-link>
+                    @endcan
                     @can('viewReports')
                         <x-nav-link :href="route('reports.index')" :active="request()->routeIs('reports.*')" wire:navigate>
                             {{ __('Reports') }}
@@ -125,6 +130,11 @@ new class extends Component
             @can('viewAny', \App\Models\User::class)
                 <x-responsive-nav-link :href="route('users.index')" :active="request()->routeIs('users.*')" wire:navigate>
                     {{ __('User management') }}
+                </x-responsive-nav-link>
+            @endcan
+            @can('viewActivityLogs')
+                <x-responsive-nav-link :href="route('activity-logs.index')" :active="request()->routeIs('activity-logs.*')" wire:navigate>
+                    {{ __('Activity logs') }}
                 </x-responsive-nav-link>
             @endcan
             @can('viewReports')

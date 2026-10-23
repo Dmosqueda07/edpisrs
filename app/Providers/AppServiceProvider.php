@@ -30,6 +30,16 @@ class AppServiceProvider extends ServiceProvider
             && $user->is_active
             && in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true)
         );
+        Gate::define('viewActivityLogs', fn ($user): bool =>
+            $user->status === UserStatus::Active
+            && $user->is_active
+            && in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true)
+        );
+        Gate::define('viewAccountActivityLogs', fn ($user): bool =>
+            $user->status === UserStatus::Active
+            && $user->is_active
+            && $user->role === Role::SuperAdministrator
+        );
 
         DB::extend('sqlsrv', function (array $config, string $name) {
             $connector = new SqlServerConnector;

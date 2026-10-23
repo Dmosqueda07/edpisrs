@@ -8,10 +8,12 @@ use App\Livewire\AssignedItSupportRequests;
 use App\Livewire\ManageItSupportRequests;
 use App\Livewire\MyItSupportRequests;
 use App\Models\ItSupportRequest;
+use App\Models\ItSupportRequestLog;
 use App\Models\RequestType;
 use App\Models\User;
 use App\Notifications\RequestAssigned;
 use App\Services\RequestOverdueQuery;
+use App\Services\RequestDashboardMetrics;
 use App\Support\WorkingDayCalculator;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -62,7 +64,7 @@ it('shows administrator card counts from one grouped status aggregate query', fu
 
     $queries = [];
     DB::listen(function ($query) use (&$queries): void {
-        if (str_contains(strtolower($query->sql), 'sum(case when status =')) {
+        if (str_contains(strtolower($query->sql), 'sum(case when it_support_requests.status =')) {
             $queries[] = $query->sql;
         }
     });
@@ -74,12 +76,12 @@ it('shows administrator card counts from one grouped status aggregate query', fu
         ->assertSee('data-dashboard-card="new-requests-7-days"', false)
         ->assertSee('data-dashboard-card="pending-approval"', false)
         ->assertSee('data-dashboard-card="awaiting-assignment"', false)
-        ->assertSee('status=submitted&amp;recent=7d', false);
+        ->assertSee('tab=submitted&amp;recent=7d', false);
 
     expect($queries)->toHaveCount(1);
 
     Livewire::actingAs($administrator)
-        ->withQueryParams(['status' => 'submitted', 'recent' => '7d'])
+        ->withQueryParams(['tab' => 'submitted', 'recent' => '7d'])
         ->test(ManageItSupportRequests::class)
         ->assertSee($recentSubmitted->ticket_no)
         ->assertDontSee($oldSubmitted->ticket_no);
@@ -208,7 +210,7 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
         ->assertSee('New requests (7 days)')
         ->assertSee('data-dashboard-card="resolved-today"', false)
         ->assertSee('data-dashboard-card="overdue"', false)
-        ->assertSee('status=submitted&amp;recent=7d', false);
+        ->assertSee('tab=submitted&amp;recent=7d', false);
 
     $html = $response->getContent();
     foreach ([
@@ -221,7 +223,7 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
         'overdue' => 1,
     ] as $slug => $expectedCount) {
         preg_match(
-            '/data-dashboard-card="'.preg_quote($slug, '/').'".*?<span class="mt-2 block text-3xl font-semibold text-gray-900">(\d+)<\/span>/s',
+            '/data-dashboard-card="'.preg_quote($slug, '/').'".*?<span class="mt-1 block text-2xl font-semibold tracking-tight text\[#122643\]">(\d+)<\/span>/s',
             $html,
             $matches,
         );
@@ -229,7 +231,7 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
     }
 
     Livewire::actingAs($administrator)
-        ->withQueryParams(['status' => 'submitted', 'recent' => '7d'])
+        ->withQueryParams(['tab' => 'submitted', 'recent' => '7d'])
         ->test(ManageItSupportRequests::class)
         ->assertSee($recentSubmitted->ticket_no)
         ->assertDontSee($awaitingApproved->ticket_no);
@@ -326,7 +328,7 @@ it('shows cards only to administrators and welcome actions without cards to othe
         ->assertDontSee($otherRequest->ticket_no);
 });
 
-it('restricts dashboard cards and the assigned queue to the two administrator roles', function () {
+it('restricts the redesigned dashboard and the assigned queue to the two administrator roles', function () {
     foreach (Role::cases() as $role) {
         $user = User::factory()->create(['role' => $role]);
         $isAdministrator = in_array($role, [Role::Administrator, Role::SuperAdministrator], true);
@@ -334,14 +336,15 @@ it('restricts dashboard cards and the assigned queue to the two administrator ro
         $dashboard = $this->actingAs($user)->get(route('dashboard'))->assertOk();
         if ($isAdministrator) {
             $dashboard->assertSee('Request overview')
-                ->assertSee('My assigned work')
-                ->assertSee('My assigned requests')
-                ->assertSee('Assigned')
-                ->assertSee('In progress')
-                ->assertSee('On hold')
-                ->assertSee('Resolved')
+                ->assertSee('Operational shortcuts')
+                ->assertSee('User management')
+                ->assertSee('EDP intake')
+                ->assertSee('Approvals')
+                ->assertSee('Reports')
+                ->assertSee('Activity logs')
+                ->assertDontSee('My assigned work')
                 ->assertSee('data-dashboard-card=', false)
-                ->assertSee('Assigned to Me');
+                ->assertDontSee('What can we');
 
             $this->get(route('edp.assigned-requests.index'))->assertOk();
         } else {
@@ -354,6 +357,83 @@ it('restricts dashboard cards and the assigned queue to the two administrator ro
             $this->get(route('edp.assigned-requests.index'))->assertForbidden();
         }
     }
+});
+
+it('shows administrator shortcut totals, hides the assigned line at zero, and has useful empty states', function () {
+    $administrator = User::factory()->create(['role' => Role::Administrator]);
+    $requester = User::factory()->create();
+    User::factory()->create(['status' => 'pending']);
+    User::factory()->create(['status' => 'suspended']);
+    makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::PendingApproval,
+        'approval_roles' => [Role::Administrator->value],
+        'requested_at' => now()->subDays(2),
+    ]);
+
+    $this->actingAs($administrator)->get(route('dashboard'))->assertOk()
+        ->assertSeeText('4 total users')
+        ->assertSee('1 waiting for approval')
+        ->assertSee('1 suspended')
+        ->assertSee('Oldest has waited 2 days')
+        ->assertSee('No request activity has been recorded yet.')
+        ->assertDontSee('You have 0 assigned requests')
+        ->assertSee('No matching requests');
+});
+
+it('calculates grouped shortcut totals and monthly report activity', function () {
+    CarbonImmutable::setTestNow('2026-10-15 12:00:00');
+    try {
+        $administrator = User::factory()->create(['role' => Role::Administrator]);
+        $requester = User::factory()->create();
+        User::factory()->create(['status' => 'pending']);
+        User::factory()->create(['status' => 'suspended']);
+
+        $approval = makeDashboardRequest($requester, [
+            'status' => ItSupportRequestStatus::PendingApproval,
+            'approval_roles' => [Role::Administrator->value],
+            'requested_at' => '2026-10-13 12:00:00',
+        ]);
+        $resolved = makeDashboardRequest($requester, [
+            'status' => ItSupportRequestStatus::Resolved,
+            'requested_at' => '2026-10-10 10:00:00',
+            'resolved_at' => '2026-10-14 10:00:00',
+        ]);
+        makeDashboardRequest($requester, [
+            'status' => ItSupportRequestStatus::Submitted,
+            'requires_approval' => false,
+            'requested_at' => '2026-10-15 09:00:00',
+        ]);
+        ItSupportRequestLog::factory()->create([
+            'it_support_request_id' => $resolved->id,
+            'user_id' => $administrator->user_id,
+            'action' => 'resolved',
+            'created_at' => '2026-10-14 10:00:00',
+        ]);
+
+        $dashboard = app(RequestDashboardMetrics::class)->administratorDashboard($administrator);
+        expect($dashboard['shortcuts']['users']['total'])->toBe(4)
+            ->and($dashboard['shortcuts']['users']['pending'])->toBe(1)
+            ->and($dashboard['shortcuts']['users']['suspended'])->toBe(1)
+            ->and($dashboard['shortcuts']['intake']['awaiting'])->toBe(1)
+            ->and($dashboard['shortcuts']['intake']['overdue'])->toBe(0)
+            ->and($dashboard['shortcuts']['approvals']['count'])->toBe(1)
+            ->and($dashboard['shortcuts']['approvals']['oldest'])->toBe('2 days')
+            ->and($dashboard['shortcuts']['reports']['received'])->toBe(3)
+            ->and($dashboard['shortcuts']['reports']['resolved'])->toBe(1)
+            ->and($dashboard['shortcuts']['activity']['entries'])->toHaveCount(1)
+            ->and($dashboard['shortcuts']['activity']['entries']->first()->itSupportRequest->ticket_no)->toBe($resolved->ticket_no);
+    } finally {
+        CarbonImmutable::setTestNow();
+    }
+});
+
+it('shows the admin assigned request line only for requests assigned to that admin', function () {
+    $administrator = User::factory()->create(['role' => Role::SuperAdministrator]);
+    makeDashboardRequest(User::factory()->create(), ['assigned_technician_id' => $administrator->getKey(), 'status' => ItSupportRequestStatus::Assigned]);
+
+    $this->actingAs($administrator)->get(route('dashboard'))->assertOk()
+        ->assertSee('You have 1 assigned request')
+        ->assertSee('View assigned to me');
 });
 
 it('forbids non-administrators from viewing the request management queue', function () {
