@@ -53,16 +53,20 @@ class ItSupportRequestController extends Controller
         return view('it-support-requests.manage');
     }
 
-    public function approvals(): View
+    public function approvals(): RedirectResponse|View
     {
         Gate::authorize('viewApprovalQueue', ItSupportRequest::class);
+
+        if (Gate::allows('viewAdminDashboard', ItSupportRequest::class)) {
+            return redirect()->route('edp.it-support-requests.index', ['tab' => 'pending_approval']);
+        }
 
         return view('it-support-requests.approvals');
     }
 
     public function assigned(): View
     {
-        Gate::authorize('viewAssignedQueue', ItSupportRequest::class);
+        Gate::authorize(Gate::allows('viewAssignedQueue', ItSupportRequest::class) ? 'viewAssignedQueue' : 'viewAssigned', ItSupportRequest::class);
 
         return view('it-support-requests.assigned');
     }

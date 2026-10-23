@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Notifications\RequestAssigned;
 use App\Services\RequestOverdueQuery;
 use App\Services\RequestDashboardMetrics;
+use App\Services\ItSupportRequestAuditLogger;
 use App\Support\WorkingDayCalculator;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -434,6 +435,27 @@ it('shows the admin assigned request line only for requests assigned to that adm
     $this->actingAs($administrator)->get(route('dashboard'))->assertOk()
         ->assertSee('You have 1 assigned request')
         ->assertSee('View assigned to me');
+});
+
+it('shows the saved actor name for new dashboard activity and labels null actors as System', function () {
+    $administrator = User::factory()->create([
+        'role' => Role::Administrator,
+        'first_name' => 'Audit',
+        'last_name' => 'Operator',
+    ]);
+    $requester = User::factory()->create();
+    $supportRequest = makeDashboardRequest($requester);
+    $audit = app(ItSupportRequestAuditLogger::class);
+    $audit->record($supportRequest, $administrator, 'assigned', ItSupportRequestStatus::Submitted, ItSupportRequestStatus::Assigned);
+    $audit->record($supportRequest, null, 'work_started', ItSupportRequestStatus::Assigned, ItSupportRequestStatus::InProgress);
+
+    expect(DB::table('it_support_request_logs')->where('action', 'assigned')->value('user_id'))
+        ->toBe($administrator->user_id);
+
+    $this->actingAs($administrator)->get(route('dashboard'))->assertOk()
+        ->assertSee('Audit Operator')
+        ->assertSee('System')
+        ->assertDontSee('Unknown user');
 });
 
 it('forbids non-administrators from viewing the request management queue', function () {

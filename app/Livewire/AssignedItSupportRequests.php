@@ -26,7 +26,7 @@ class AssignedItSupportRequests extends Component
 
     public function render(RequestOverdueQuery $overdueQuery): View
     {
-        Gate::authorize('viewAssignedQueue', ItSupportRequest::class);
+        Gate::authorize(Gate::allows('viewAssignedQueue', ItSupportRequest::class) ? 'viewAssignedQueue' : 'viewAssigned', ItSupportRequest::class);
 
         $this->validate([
             'status' => [Rule::when($this->status !== '', Rule::in(array_column(ItSupportRequestStatus::cases(), 'value')))],
@@ -34,12 +34,12 @@ class AssignedItSupportRequests extends Component
 
         $query = ItSupportRequest::query()
             ->with(['requester', 'detailsRows'])
-                ->where('assigned_technician_id', auth()->id())
-                ->when($this->status !== '', fn ($query) => $query->where('status', $this->status));
+            ->where('assigned_technician_id', auth()->id())
+            ->when($this->status !== '', fn ($query) => $query->where('status', $this->status));
 
         $overdueQuery->joinLatestActivity($query);
         $query->select('it_support_requests.*')->selectRaw(
-            "CASE WHEN it_support_requests.status IN (?, ?, ?) AND COALESCE(latest_request_activity.latest_activity, it_support_requests.updated_at) < ? THEN 1 ELSE 0 END AS is_overdue",
+            'CASE WHEN it_support_requests.status IN (?, ?, ?) AND COALESCE(latest_request_activity.latest_activity, it_support_requests.updated_at) < ? THEN 1 ELSE 0 END AS is_overdue',
             [
                 ItSupportRequestStatus::Assigned->value,
                 ItSupportRequestStatus::InProgress->value,

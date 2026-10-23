@@ -17,9 +17,8 @@
                 <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     @foreach ($cards as $card)
                         <a href="{{ $card['url'] }}" wire:navigate class="group rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm transition hover:border-blue-300 hover:shadow focus:outline-none focus:ring-2 focus:ring-blue-500" data-dashboard-card="{{ \Illuminate\Support\Str::slug($card['label']) }}">
-                            <span class="flex items-center justify-between gap-2 text-sm font-medium text-gray-600 group-hover:text-blue-800">
+                            <span class="block text-sm font-medium text-gray-600 group-hover:text-blue-800">
                                 {{ $card['label'] }}
-                                <span aria-hidden="true" class="text-blue-600 transition group-hover:translate-x-0.5">↗</span>
                             </span>
                             <span class="mt-1 block text-2xl font-semibold tracking-tight text-[#122643]">{{ $card['count'] }}</span>
                             @if ($card['count'] === 0)<span class="text-xs text-gray-500">No matching requests</span>@endif
@@ -46,9 +45,9 @@
                     <article class="flex min-h-40 flex-col rounded-lg border border-gray-200 border-t-2 border-t-blue-700 bg-white p-5 shadow-sm">
                         <h3 class="font-semibold text-[#122643]">User management</h3>
                         <p class="mt-3 text-2xl font-semibold text-gray-900">{{ $shortcuts['users']['total'] }} <span class="text-sm font-normal text-gray-500">total users</span></p>
-                        <div class="mt-2 flex flex-wrap gap-2 text-sm">
+                        <div class="mt-2 grid grid-cols-1 gap-2 text-sm">
                             @if ($shortcuts['users']['pending'] > 0)
-                                <span class="rounded-md bg-amber-100 px-2 py-1 font-medium text-amber-900">{{ $shortcuts['users']['pending'] }} waiting for approval</span>
+                                <span class="w-fit rounded-md bg-amber-100 px-2 py-1 font-medium text-amber-900">{{ $shortcuts['users']['pending'] }} waiting for approval</span>
                             @else
                                 <span class="text-gray-500">No accounts waiting for approval</span>
                             @endif
@@ -59,9 +58,9 @@
 
                     <article class="flex min-h-40 flex-col rounded-lg border border-gray-200 border-t-2 border-t-blue-700 bg-white p-5 shadow-sm">
                         <h3 class="font-semibold text-[#122643]">EDP intake</h3>
-                        <div class="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
-                            <p><strong class="text-xl text-gray-900">{{ $shortcuts['intake']['awaiting'] }}</strong><br>Awaiting assignment</p>
-                            <p><strong class="text-xl text-gray-900">{{ $shortcuts['intake']['overdue'] }}</strong><br>Overdue</p>
+                        <div class="mt-3 grid grid-cols-2 gap-4 text-sm text-gray-600">
+                            <p><strong class="text-xl text-gray-900">{{ $shortcuts['intake']['awaiting'] }}</strong><span class="mt-1 block">Awaiting assignment</span></p>
+                            <p><strong class="text-xl text-gray-900">{{ $shortcuts['intake']['overdue'] }}</strong><span class="mt-1 block">Overdue</span></p>
                         </div>
                         @if ($shortcuts['intake']['awaiting'] === 0)<p class="mt-2 text-xs text-gray-500">No requests awaiting assignment</p>@endif
                         @if ($shortcuts['intake']['overdue'] > 0)<span class="mt-2 w-fit rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">{{ $shortcuts['intake']['overdue'] }} need attention: overdue</span>@else<p class="mt-2 text-xs text-gray-500">No overdue requests</p>@endif
@@ -99,7 +98,7 @@
                             <ul class="mt-3 divide-y divide-gray-100">
                                 @foreach ($shortcuts['activity']['entries'] as $entry)
                                     <li class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm">
-                                        <p class="min-w-0 flex-1 text-gray-700"><span class="font-medium text-gray-900">{{ $entry->user?->full_name ?? 'Unknown user' }}</span> {{ \App\Http\Controllers\ActivityLogController::actionLabel($entry->action) }} <span class="font-semibold text-blue-800">{{ $entry->itSupportRequest?->ticket_no ?? 'Request unavailable' }}</span></p>
+                                        <p class="min-w-0 flex-1 text-gray-700"><span class="font-medium text-gray-900">{{ $entry->user?->full_name ?? 'System' }}</span> {{ \App\Http\Controllers\ActivityLogController::actionLabel($entry->action) }} <span class="font-semibold text-blue-800">{{ $entry->itSupportRequest?->ticket_no ?? 'Request unavailable' }}</span></p>
                                         <time class="shrink-0 text-xs text-gray-500" datetime="{{ $entry->created_at?->toIso8601String() }}">{{ $entry->created_at?->format('M j, Y g:i A') }}</time>
                                     </li>
                                 @endforeach

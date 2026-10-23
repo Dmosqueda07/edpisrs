@@ -21,7 +21,7 @@ class RequestDashboardMetrics
             ->selectRaw('SUM(CASE WHEN it_support_requests.status = ? AND it_support_requests.requested_at >= ? THEN 1 ELSE 0 END) AS new_requests', [ItSupportRequestStatus::Submitted->value, now()->subDays(7)->toDateTimeString()])
             ->selectRaw('SUM(CASE WHEN (it_support_requests.status = ? OR (it_support_requests.status = ? AND it_support_requests.requires_approval = ?)) AND it_support_requests.assigned_technician_id IS NULL THEN 1 ELSE 0 END) AS awaiting_assignment', [ItSupportRequestStatus::Approved->value, ItSupportRequestStatus::Submitted->value, false])
             ->selectRaw('SUM(CASE WHEN it_support_requests.resolved_at >= ? AND it_support_requests.resolved_at < ? THEN 1 ELSE 0 END) AS resolved_today', [today()->toDateTimeString(), today()->addDay()->toDateTimeString()])
-            ->selectRaw('SUM(CASE WHEN it_support_requests.assigned_technician_id = ? THEN 1 ELSE 0 END) AS assigned_to_me', [$user->getKey()])
+            ->selectRaw('SUM(CASE WHEN it_support_requests.assigned_technician_id = ? AND it_support_requests.status IN (?, ?, ?) THEN 1 ELSE 0 END) AS assigned_to_me', [$user->getKey(), ...OpenAssignedRequestCount::statusValues()])
             ->selectRaw('SUM(CASE WHEN it_support_requests.status IN (?, ?, ?, ?, ?) AND COALESCE(latest_request_activity.latest_activity, it_support_requests.updated_at) < ? THEN 1 ELSE 0 END) AS overdue', [ItSupportRequestStatus::Submitted->value, ItSupportRequestStatus::Approved->value, ItSupportRequestStatus::Assigned->value, ItSupportRequestStatus::InProgress->value, ItSupportRequestStatus::OnHold->value, app(RequestOverdueQuery::class)->cutoff()->toDateTimeString()])
             ->groupBy('it_support_requests.status')->get()->keyBy('status');
 
