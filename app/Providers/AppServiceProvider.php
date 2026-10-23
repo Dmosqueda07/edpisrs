@@ -5,6 +5,9 @@ namespace App\Providers;
 use App\Database\Connectors\SqlServerConnector;
 use Illuminate\Database\SqlServerConnection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use App\Enums\Role;
+use App\Enums\UserStatus;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -22,6 +25,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::define('viewReports', fn ($user): bool =>
+            $user->status === UserStatus::Active
+            && $user->is_active
+            && in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true)
+        );
+
         DB::extend('sqlsrv', function (array $config, string $name) {
             $connector = new SqlServerConnector;
             $config['name'] = $name;
