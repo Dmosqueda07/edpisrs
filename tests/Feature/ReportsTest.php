@@ -45,6 +45,23 @@ it('shows accomplishments completed on both date boundaries and their total', fu
         ->assertOk()->assertSee('Installed the required software')->assertSee('Total completed: 1');
 });
 
+it('uses the requester name snapshot in historical accomplishment reports', function () {
+    $admin = reportAdmin();
+    $requester = User::factory()->create(['first_name' => 'Current', 'last_name' => 'Name']);
+    ItSupportRequest::factory()->for($requester, 'requester')->create([
+        'requester_name' => 'Name At Submission',
+        'requested_at' => '2026-06-15 12:00:00',
+        'completed_at' => '2026-06-16 12:00:00',
+        'status' => ItSupportRequestStatus::Closed,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('reports.index', ['preset' => 'custom', 'start' => '2026-06-01', 'end' => '2026-06-30']))
+        ->assertOk()
+        ->assertSee('Name At Submission')
+        ->assertDontSee('Current Name');
+});
+
 it('shows division counts and percentages from requests received in the period', function () {
     $admin = reportAdmin();
     $user = User::factory()->create();

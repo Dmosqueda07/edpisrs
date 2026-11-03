@@ -30,7 +30,7 @@ class ReportsController extends Controller
         $technicianId = $validated['technician'] ?? null;
 
         $completed = ItSupportRequest::query()
-            ->with(['requester:user_id,first_name,last_name', 'requestType:id,name', 'technician:user_id,first_name,last_name'])
+            ->with(['requestType:id,name', 'technician:user_id,first_name,last_name'])
             ->where('completed_at', '>=', $from)
             ->where('completed_at', '<', $until)
             ->when($technicianId, fn ($query) => $query->where('assigned_technician_id', $technicianId))

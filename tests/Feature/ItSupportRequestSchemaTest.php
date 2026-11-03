@@ -3,6 +3,7 @@
 use App\Models\ItSupportRequest;
 use App\Models\ItSupportRequestAttachment;
 use App\Models\ItSupportRequestApproval;
+use App\Models\ItSupportRequestComment;
 use App\Models\ItSupportRequestDetail;
 use App\Models\ItSupportRequestLog;
 use App\Models\RequestType;
@@ -10,6 +11,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
 
@@ -30,6 +32,11 @@ it('generates ticket numbers sequentially within each request year', function ()
         ->and($nextYear->ticket_no)->toBe('EDP-2027-00001');
 });
 
+it('stores attachments only in the dedicated attachment table', function () {
+    expect(Schema::hasColumn('it_support_requests', 'attachment_path'))->toBeFalse()
+        ->and(Schema::hasTable('it_support_request_attachments'))->toBeTrue();
+});
+
 it('restricts deleting users referenced by requests and audit logs', function () {
     $requester = User::factory()->create();
     $request = ItSupportRequest::factory()
@@ -45,7 +52,7 @@ it('restricts deleting users referenced by requests and audit logs', function ()
         ->and(ItSupportRequestLog::query()->whereKey($log->getKey())->exists())->toBeTrue();
 });
 
-it('cascades pure request child rows when a request is deleted', function () {
+it('restricts deleting requests with retained history while cascading request details', function () {
     $request = ItSupportRequest::factory()->create();
     $uploader = User::factory()->create();
     $detail = ItSupportRequestDetail::factory()->create([
@@ -56,10 +63,35 @@ it('cascades pure request child rows when a request is deleted', function () {
         'uploaded_by' => $uploader->getKey(),
     ]);
 
+    expect(fn () => $request->delete())->toThrow(QueryException::class)
+        ->and(ItSupportRequest::query()->whereKey($request->getKey())->exists())->toBeTrue()
+        ->and(ItSupportRequestAttachment::query()->whereKey($attachment->getKey())->exists())->toBeTrue();
+
+    $attachment->delete();
     $request->delete();
 
-    expect(ItSupportRequestDetail::query()->whereKey($detail->getKey())->exists())->toBeFalse()
-        ->and(ItSupportRequestAttachment::query()->whereKey($attachment->getKey())->exists())->toBeFalse();
+    expect(ItSupportRequestDetail::query()->whereKey($detail->getKey())->exists())->toBeFalse();
+});
+
+it('restricts deleting requests with approval and comment history', function () {
+    $requestWithApproval = ItSupportRequest::factory()->create();
+    $approval = ItSupportRequestApproval::factory()->create([
+        'it_support_request_id' => $requestWithApproval->getKey(),
+    ]);
+
+    expect(fn () => $requestWithApproval->delete())->toThrow(QueryException::class)
+        ->and(ItSupportRequestApproval::query()->whereKey($approval->getKey())->exists())->toBeTrue();
+
+    $approval->delete();
+    $requestWithApproval->delete();
+
+    $requestWithComment = ItSupportRequest::factory()->create();
+    $comment = ItSupportRequestComment::factory()->create([
+        'it_support_request_id' => $requestWithComment->getKey(),
+    ]);
+
+    expect(fn () => $requestWithComment->delete())->toThrow(QueryException::class)
+        ->and(ItSupportRequestComment::query()->whereKey($comment->getKey())->exists())->toBeTrue();
 });
 
 it('restricts deleting a request type while requests reference it', function () {

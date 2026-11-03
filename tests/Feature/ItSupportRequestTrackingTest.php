@@ -85,8 +85,14 @@ it('prevents an employee from viewing or downloading another employee request', 
     $otherUser = User::factory()->create();
     $path = 'it-support-requests/private-document.pdf';
     Storage::disk('private')->put($path, '%PDF-1.4 private file');
-    $supportRequest = ItSupportRequest::factory()->for($owner, 'requester')->create([
-        'attachment_path' => $path,
+    $supportRequest = ItSupportRequest::factory()->for($owner, 'requester')->create();
+    ItSupportRequestAttachment::create([
+        'it_support_request_id' => $supportRequest->getKey(),
+        'uploaded_by' => $owner->getKey(),
+        'file_path' => $path,
+        'original_name' => basename($path),
+        'mime_type' => 'application/pdf',
+        'size' => Storage::disk('private')->size($path),
     ]);
 
     $this->actingAs($otherUser)
@@ -108,17 +114,26 @@ it('allows an administrator to view any request', function () {
         ->assertSee($supportRequest->requester_name);
 });
 
-it('serves a legacy requester attachment inline with safe headers', function () {
+it('serves an attachment from its relationship with safe headers', function () {
     Storage::fake('private');
     $requester = User::factory()->create();
     $path = 'it-support-requests/supporting-document.pdf';
     Storage::disk('private')->put($path, '%PDF-1.4 attachment');
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
-        'attachment_path' => $path,
+    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
+    $attachment = ItSupportRequestAttachment::create([
+        'it_support_request_id' => $supportRequest->getKey(),
+        'uploaded_by' => $requester->getKey(),
+        'file_path' => $path,
+        'original_name' => basename($path),
+        'mime_type' => 'application/pdf',
+        'size' => Storage::disk('private')->size($path),
     ]);
 
     $this->actingAs($requester)
         ->get(route('it-support-requests.attachment', $supportRequest))
+        ->assertRedirect(route('it-support-requests.attachments.download', [$supportRequest, $attachment]));
+
+    $this->get(route('it-support-requests.attachments.download', [$supportRequest, $attachment]))
         ->assertOk()
         ->assertHeader('Content-Type', 'application/pdf')
         ->assertHeader('X-Content-Type-Options', 'nosniff')
@@ -172,13 +187,19 @@ it('lists every private image and PDF attachment on the request detail page', fu
         ->assertHeader('X-Content-Type-Options', 'nosniff');
 });
 
-it('uses the authenticated attachment route for legacy attachment paths', function () {
+it('keeps the legacy attachment URL as a relationship-backed compatibility redirect', function () {
     Storage::fake('private');
     $requester = User::factory()->create();
     $path = 'it-support-requests/legacy-photo.png';
     Storage::disk('private')->put($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/qN8AAAAASUVORK5CYII='));
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
-        'attachment_path' => $path,
+    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
+    $attachment = ItSupportRequestAttachment::create([
+        'it_support_request_id' => $supportRequest->getKey(),
+        'uploaded_by' => $requester->getKey(),
+        'file_path' => $path,
+        'original_name' => basename($path),
+        'mime_type' => 'image/png',
+        'size' => Storage::disk('private')->size($path),
     ]);
 
     $this->actingAs($requester)
@@ -186,9 +207,12 @@ it('uses the authenticated attachment route for legacy attachment paths', functi
         ->assertOk()
         ->assertSee('legacy-photo.png')
         ->assertSee('Attachments (1)')
-        ->assertSee(route('it-support-requests.attachment', $supportRequest), false);
+        ->assertSee(route('it-support-requests.attachments.download', [$supportRequest, $attachment]), false);
 
     $this->get(route('it-support-requests.attachment', $supportRequest).'?display=preview')
+        ->assertRedirect(route('it-support-requests.attachments.download', [$supportRequest, $attachment]));
+
+    $this->get(route('it-support-requests.attachments.download', [$supportRequest, $attachment]).'?display=preview')
         ->assertOk()
         ->assertHeader('Content-Type', 'image/png')
         ->assertHeader('Content-Disposition', 'inline; filename=legacy-photo.png')

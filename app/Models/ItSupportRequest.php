@@ -32,7 +32,6 @@ class ItSupportRequest extends Model
         'division',
         'support_type',
         'follow_up_question',
-        'attachment_path',
         'certified_at',
         'status',
         'assigned_at',

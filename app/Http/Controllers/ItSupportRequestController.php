@@ -264,20 +264,6 @@ class ItSupportRequestController extends Controller
             })
             ->values();
 
-        if ($attachments->isEmpty() && $itSupportRequest->attachment_path) {
-            $legacyPath = $itSupportRequest->attachment_path;
-            if ($privateDisk->exists($legacyPath)) {
-                $mimeType = $privateDisk->mimeType($legacyPath);
-                $attachments->push([
-                    'name' => basename($legacyPath),
-                    'size' => $privateDisk->size($legacyPath),
-                    'mime_type' => $mimeType,
-                    'is_image' => str_starts_with((string) $mimeType, 'image/'),
-                    'url' => route('it-support-requests.attachment', $itSupportRequest),
-                ]);
-            }
-        }
-
         return view('it-support-requests.show', [
             'supportRequest' => $itSupportRequest,
             'canViewInternalNotes' => $canViewInternalNotes,
@@ -473,26 +459,13 @@ class ItSupportRequestController extends Controller
         return redirect()->route('it-support-requests.show', $itSupportRequest);
     }
 
-    public function downloadAttachment(ItSupportRequest $itSupportRequest): StreamedResponse
+    public function downloadAttachment(ItSupportRequest $itSupportRequest): RedirectResponse
     {
         $this->authorize('view', $itSupportRequest);
 
-        abort_unless($itSupportRequest->attachment_path, 404);
-        $disk = Storage::disk('private');
-        abort_unless($disk->exists($itSupportRequest->attachment_path), 404);
+        $attachment = $itSupportRequest->attachments()->oldest('id')->firstOrFail();
 
-        $mimeType = $disk->mimeType($itSupportRequest->attachment_path);
-        abort_unless($this->isPreviewableAttachmentMimeType($mimeType), 404);
-
-        return $disk->response(
-            $itSupportRequest->attachment_path,
-            basename($itSupportRequest->attachment_path),
-            [
-                'Content-Type' => $mimeType,
-                'X-Content-Type-Options' => 'nosniff',
-            ],
-            'inline',
-        );
+        return redirect()->route('it-support-requests.attachments.download', [$itSupportRequest, $attachment]);
     }
 
     public function downloadRequestAttachment(
