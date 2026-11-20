@@ -18,7 +18,7 @@ class ItSupportRequestForm extends Component
     public function render(): View
     {
         $requestTypes = RequestType::active()->get();
-        $selectedType = $requestTypes->firstWhere('id', (int) $this->requestTypeId);
+        $selectedType = $requestTypes->firstWhere('request_types_id', (int) $this->requestTypeId);
         $selectedDefinition = collect(config('request_forms.request_types'))
             ->firstWhere('key', $selectedType?->key);
 

@@ -2,21 +2,25 @@
 
 namespace App\Models;
 
-use Database\Factories\ItSupportRequestLogFactory;
+use Database\Factories\RequestLogFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
-class ItSupportRequestLog extends Model
+class RequestLog extends Model
 {
-    /** @use HasFactory<ItSupportRequestLogFactory> */
+    /** @use HasFactory<RequestLogFactory> */
     use HasFactory;
 
     public $timestamps = false;
 
+    protected $table = 'request_logs';
+
+    protected $primaryKey = 'logs_id';
+
     protected $fillable = [
-        'it_support_request_id',
+        'requests_id',
         'user_id',
         'action',
         'from_status',
@@ -42,9 +46,9 @@ class ItSupportRequestLog extends Model
         static::deleting(fn () => throw new LogicException('Request audit logs are append-only.'));
     }
 
-    public function itSupportRequest(): BelongsTo
+    public function supportRequest(): BelongsTo
     {
-        return $this->belongsTo(ItSupportRequest::class);
+        return $this->belongsTo(SupportRequest::class, 'requests_id', 'requests_id');
     }
 
     public function user(): BelongsTo

@@ -31,25 +31,22 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         ->name('it-support-requests.attachment');
     Route::get('it-support-requests/{it_support_request}/attachments/{attachment}', [ItSupportRequestController::class, 'downloadRequestAttachment'])
         ->name('it-support-requests.attachments.download');
-    Route::get('it-support-requests/{it_support_request}/comments/{comment}/proof', [ItSupportRequestController::class, 'downloadProof'])
-        ->name('it-support-requests.comment-proof');
-    Route::post('it-support-requests/{it_support_request}/comments', [ItSupportRequestController::class, 'storeComment'])
-        ->name('it-support-requests.comments.store');
+    Route::post('it-support-requests/{it_support_request}/attachments/proof', [ItSupportRequestController::class, 'storeProofAttachment'])
+        ->name('it-support-requests.attachments.store-proof');
     Route::patch('it-support-requests/{it_support_request}/start', [ItSupportRequestController::class, 'startWork'])
         ->name('it-support-requests.start');
     Route::patch('it-support-requests/{it_support_request}/resolve', [ItSupportRequestController::class, 'resolve'])
         ->name('it-support-requests.resolve');
+    Route::patch('it-support-requests/{it_support_request}/hold', [ItSupportRequestController::class, 'hold'])
+        ->name('it-support-requests.hold');
+    Route::patch('it-support-requests/{it_support_request}/resume', [ItSupportRequestController::class, 'resume'])
+        ->name('it-support-requests.resume');
     Route::patch('it-support-requests/{it_support_request}/complete', [ItSupportRequestController::class, 'confirmCompletion'])
         ->name('it-support-requests.complete');
     Route::patch('it-support-requests/{it_support_request}/cancel', [ItSupportRequestController::class, 'cancel'])
         ->name('it-support-requests.cancel');
     Route::patch('it-support-requests/{it_support_request}/reopen', [ItSupportRequestController::class, 'reopen'])
         ->name('it-support-requests.reopen');
-    Route::patch('it-support-requests/{it_support_request}/approval', [ItSupportRequestController::class, 'decideApproval'])
-        ->name('it-support-requests.approval');
-
-    Route::get('approvals/it-support-requests', [ItSupportRequestController::class, 'approvals'])
-        ->name('approvals.it-support-requests.index');
     Route::get('edp/it-support-requests', [ItSupportRequestController::class, 'manage'])
         ->name('edp.it-support-requests.index');
     Route::get('edp/assigned-requests', [ItSupportRequestController::class, 'assigned'])

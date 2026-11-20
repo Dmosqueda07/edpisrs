@@ -66,8 +66,8 @@
                 <div class="mt-4 grid gap-3 sm:grid-cols-2">
                     @foreach ($requestTypes as $type)
                         <label class="flex items-start gap-3 rounded-md border border-gray-200 p-3 hover:border-blue-400">
-                            <input type="radio" name="request_type_id" value="{{ $type->id }}" wire:model.live="requestTypeId"
-                                @checked((string) old('request_type_id') === (string) $type->id)
+                            <input type="radio" name="request_type_id" value="{{ $type->getKey() }}" wire:model.live="requestTypeId"
+                                @checked((string) old('request_type_id') === (string) $type->getKey())
                                 required
                                 class="mt-1 border-gray-300 text-blue-700 focus:ring-blue-600">
                             <span class="text-sm text-gray-800">{{ $type->name }}</span>

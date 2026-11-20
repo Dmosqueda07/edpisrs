@@ -2,22 +2,22 @@
 
 namespace Database\Factories;
 
-use App\Models\ItSupportRequest;
-use App\Models\ItSupportRequestAttachment;
+use App\Models\SupportRequest;
+use App\Models\RequestAttachment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<ItSupportRequestAttachment>
+ * @extends Factory<RequestAttachment>
  */
-class ItSupportRequestAttachmentFactory extends Factory
+class RequestAttachmentFactory extends Factory
 {
-    protected $model = ItSupportRequestAttachment::class;
+    protected $model = RequestAttachment::class;
 
     public function definition(): array
     {
         return [
-            'it_support_request_id' => ItSupportRequest::factory(),
+            'requests_id' => SupportRequest::factory(),
             'uploaded_by' => User::factory(),
             'file_path' => 'it-support-requests/'.fake()->uuid().'.pdf',
             'original_name' => fake()->word().'.pdf',

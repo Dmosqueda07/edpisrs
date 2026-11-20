@@ -7,8 +7,8 @@ use App\Enums\Role;
 use App\Livewire\AssignedItSupportRequests;
 use App\Livewire\ManageItSupportRequests;
 use App\Livewire\MyItSupportRequests;
-use App\Models\ItSupportRequest;
-use App\Models\ItSupportRequestLog;
+use App\Models\SupportRequest;
+use App\Models\RequestLog;
 use App\Models\RequestType;
 use App\Models\User;
 use App\Notifications\RequestAssigned;
@@ -25,9 +25,9 @@ use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
-function makeDashboardRequest(User $requester, array $attributes = []): ItSupportRequest
+function makeDashboardRequest(User $requester, array $attributes = []): SupportRequest
 {
-    return ItSupportRequest::factory()->for($requester, 'requester')->create($attributes);
+    return SupportRequest::factory()->for($requester, 'requester')->create($attributes);
 }
 
 it('shows administrator card counts from one grouped status aggregate query', function () {
@@ -38,24 +38,12 @@ it('shows administrator card counts from one grouped status aggregate query', fu
     $recentSubmitted = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Submitted,
         'requested_at' => now()->subDays(2),
-        'requires_approval' => false,
     ]);
     $oldSubmitted = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Submitted,
         'requested_at' => now()->subDays(9),
     ]);
-    makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::PendingApproval,
-        'requires_approval' => true,
-    ]);
-    makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::Submitted,
-        'requires_approval' => true,
-    ]);
-    makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::Approved,
-        'requires_approval' => true,
-    ]);
+    makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Submitted]);
     makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::InProgress]);
     makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::OnHold]);
     makeDashboardRequest($requester, [
@@ -65,7 +53,7 @@ it('shows administrator card counts from one grouped status aggregate query', fu
 
     $queries = [];
     DB::listen(function ($query) use (&$queries): void {
-        if (str_contains(strtolower($query->sql), 'sum(case when it_support_requests.status =')) {
+        if (str_contains(strtolower($query->sql), 'sum(case when support_requests.status =')) {
             $queries[] = $query->sql;
         }
     });
@@ -75,7 +63,7 @@ it('shows administrator card counts from one grouped status aggregate query', fu
         ->assertOk()
         ->assertSee('New requests (7 days)')
         ->assertSee('data-dashboard-card="new-requests-7-days"', false)
-        ->assertSee('data-dashboard-card="pending-approval"', false)
+        ->assertDontSee('data-dashboard-card="pending-approval"', false)
         ->assertSee('data-dashboard-card="awaiting-assignment"', false)
         ->assertSee('tab=submitted&amp;recent=7d', false);
 
@@ -95,8 +83,8 @@ it('defaults the intake queue to Submitted and counts filtered statuses in one g
         'status' => ItSupportRequestStatus::Submitted,
         'priority' => ItSupportRequestPriority::Urgent,
     ]);
-    $approved = makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::Approved,
+    $assigned = makeDashboardRequest($requester, [
+        'status' => ItSupportRequestStatus::Assigned,
         'priority' => ItSupportRequestPriority::Urgent,
     ]);
     makeDashboardRequest($requester, [
@@ -123,13 +111,12 @@ it('defaults the intake queue to Submitted and counts filtered statuses in one g
         ->assertSeeInOrder([
             'data-status-tab="all"',
             'data-status-tab="submitted"',
-            'data-status-tab="pending_approval"',
-            'data-status-tab="approved"',
+            'data-status-tab="assigned"',
         ], false)
         ->assertSee($submitted->ticket_no)
-        ->assertDontSee($approved->ticket_no)
+        ->assertDontSee($assigned->ticket_no)
         ->assertSee('data-status-tab="submitted" data-status-count="1"', false)
-        ->assertSee('data-status-tab="approved" data-status-count="1"', false)
+        ->assertSee('data-status-tab="assigned" data-status-count="1"', false)
         ->assertSee('data-status-tab="cancelled" data-status-count="1"', false)
         ->assertSee('data-status-tab="all" data-status-count="3"', false);
 
@@ -158,28 +145,10 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
     $recentSubmitted = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Submitted,
         'requested_at' => now()->subDays(6),
-        'requires_approval' => false,
     ]);
-    makeDashboardRequest($requester, [
+    $oldSubmitted = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Submitted,
         'requested_at' => now()->subDays(8),
-        'requires_approval' => false,
-    ]);
-    $awaitingApproved = makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::Approved,
-        'requires_approval' => true,
-    ]);
-    $awaitingSubmitted = makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::Submitted,
-        'requires_approval' => false,
-    ]);
-    makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::Submitted,
-        'requires_approval' => true,
-    ]);
-    makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::PendingApproval,
-        'requires_approval' => true,
     ]);
     $resolvedToday = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Resolved,
@@ -196,12 +165,12 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
     $overdue = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Assigned,
     ]);
-    DB::table('it_support_requests')->where('id', $overdue->getKey())
+    DB::table('support_requests')->where('requests_id', $overdue->getKey())
         ->update(['updated_at' => now()->subDays(4)]);
     $active = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::InProgress,
     ]);
-    DB::table('it_support_requests')->where('id', $active->getKey())
+    DB::table('support_requests')->where('requests_id', $active->getKey())
         ->update(['updated_at' => now()->subHours(4)]);
     makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::OnHold]);
 
@@ -214,35 +183,34 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
         ->assertSee('tab=submitted&amp;recent=7d', false);
 
     $html = $response->getContent();
-    foreach ([
-        'new-requests-7-days' => 3,
-        'pending-approval' => 1,
-        'awaiting-assignment' => 4,
-        'in-progress' => 1,
-        'on-hold' => 1,
-        'resolved-today' => 2,
-        'overdue' => 1,
-    ] as $slug => $expectedCount) {
-        preg_match(
-            '/data-dashboard-card="'.preg_quote($slug, '/').'".*?<span class="mt-1 block text-2xl font-semibold tracking-tight text\[#122643\]">(\d+)<\/span>/s',
-            $html,
-            $matches,
-        );
-        expect((int) ($matches[1] ?? -1))->toBe($expectedCount);
+    $expectedCards = [
+        'New requests (7 days)' => 1,
+        'Awaiting assignment' => 2,
+        'In progress' => 1,
+        'On hold' => 1,
+        'Resolved today' => 2,
+        'Overdue' => 1,
+    ];
+    $actualCards = collect(app(RequestDashboardMetrics::class)->administratorDashboard($administrator)['overview'])
+        ->pluck('count', 'label');
+    expect($actualCards->all())->toMatchArray($expectedCards);
+
+    foreach (array_keys($expectedCards) as $label) {
+        expect($html)->toContain('data-dashboard-card="'.\Illuminate\Support\Str::slug($label).'"');
     }
 
     Livewire::actingAs($administrator)
         ->withQueryParams(['tab' => 'submitted', 'recent' => '7d'])
         ->test(ManageItSupportRequests::class)
         ->assertSee($recentSubmitted->ticket_no)
-        ->assertDontSee($awaitingApproved->ticket_no);
+        ->assertDontSee($oldSubmitted->ticket_no);
 
     Livewire::actingAs($administrator)
         ->withQueryParams(['awaiting_assignment' => '1'])
         ->test(ManageItSupportRequests::class)
         ->set('status', '')
-        ->assertSee($awaitingApproved->ticket_no)
-        ->assertSee($awaitingSubmitted->ticket_no);
+        ->assertSee($recentSubmitted->ticket_no)
+        ->assertSee($oldSubmitted->ticket_no);
 
     Livewire::actingAs($administrator)
         ->withQueryParams(['resolved_today' => '1'])
@@ -283,7 +251,7 @@ it('counts overdue activity using working days across weekends', function () {
         'created_at' => '2026-10-08 09:00:00',
     ]);
 
-    expect(app(RequestOverdueQuery::class)->apply(ItSupportRequest::query())->pluck('ticket_no')->all())
+    expect(app(RequestOverdueQuery::class)->apply(SupportRequest::query())->pluck('ticket_no')->all())
         ->toContain($thursdayActivity->ticket_no)
         ->not->toContain($fridayActivity->ticket_no);
 });
@@ -340,7 +308,6 @@ it('restricts the redesigned dashboard and the assigned queue to the two adminis
                 ->assertSee('Operational shortcuts')
                 ->assertSee('User management')
                 ->assertSee('EDP intake')
-                ->assertSee('Approvals')
                 ->assertSee('Reports')
                 ->assertSee('Activity logs')
                 ->assertDontSee('My assigned work')
@@ -366,16 +333,13 @@ it('shows administrator shortcut totals, hides the assigned line at zero, and ha
     User::factory()->create(['status' => 'pending']);
     User::factory()->create(['status' => 'suspended']);
     makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::PendingApproval,
-        'approval_roles' => [Role::Administrator->value],
+        'status' => ItSupportRequestStatus::Submitted,
         'requested_at' => now()->subDays(2),
     ]);
 
     $this->actingAs($administrator)->get(route('dashboard'))->assertOk()
         ->assertSeeText('4 total users')
-        ->assertSee('1 waiting for approval')
         ->assertSee('1 suspended')
-        ->assertSee('Oldest has waited 2 days')
         ->assertSee('No request activity has been recorded yet.')
         ->assertDontSee('You have 0 assigned requests')
         ->assertSee('No matching requests');
@@ -389,9 +353,8 @@ it('calculates grouped shortcut totals and monthly report activity', function ()
         User::factory()->create(['status' => 'pending']);
         User::factory()->create(['status' => 'suspended']);
 
-        $approval = makeDashboardRequest($requester, [
-            'status' => ItSupportRequestStatus::PendingApproval,
-            'approval_roles' => [Role::Administrator->value],
+        makeDashboardRequest($requester, [
+            'status' => ItSupportRequestStatus::Submitted,
             'requested_at' => '2026-10-13 12:00:00',
         ]);
         $resolved = makeDashboardRequest($requester, [
@@ -401,11 +364,10 @@ it('calculates grouped shortcut totals and monthly report activity', function ()
         ]);
         makeDashboardRequest($requester, [
             'status' => ItSupportRequestStatus::Submitted,
-            'requires_approval' => false,
             'requested_at' => '2026-10-15 09:00:00',
         ]);
-        ItSupportRequestLog::factory()->create([
-            'it_support_request_id' => $resolved->id,
+        RequestLog::factory()->create([
+            'requests_id' => $resolved->requests_id,
             'user_id' => $administrator->user_id,
             'action' => 'resolved',
             'created_at' => '2026-10-14 10:00:00',
@@ -415,14 +377,12 @@ it('calculates grouped shortcut totals and monthly report activity', function ()
         expect($dashboard['shortcuts']['users']['total'])->toBe(4)
             ->and($dashboard['shortcuts']['users']['pending'])->toBe(1)
             ->and($dashboard['shortcuts']['users']['suspended'])->toBe(1)
-            ->and($dashboard['shortcuts']['intake']['awaiting'])->toBe(1)
+            ->and($dashboard['shortcuts']['intake']['awaiting'])->toBe(2)
             ->and($dashboard['shortcuts']['intake']['overdue'])->toBe(0)
-            ->and($dashboard['shortcuts']['approvals']['count'])->toBe(1)
-            ->and($dashboard['shortcuts']['approvals']['oldest'])->toBe('2 days')
             ->and($dashboard['shortcuts']['reports']['received'])->toBe(3)
             ->and($dashboard['shortcuts']['reports']['resolved'])->toBe(1)
             ->and($dashboard['shortcuts']['activity']['entries'])->toHaveCount(1)
-            ->and($dashboard['shortcuts']['activity']['entries']->first()->itSupportRequest->ticket_no)->toBe($resolved->ticket_no);
+            ->and($dashboard['shortcuts']['activity']['entries']->first()->supportRequest->ticket_no)->toBe($resolved->ticket_no);
     } finally {
         CarbonImmutable::setTestNow();
     }
@@ -449,7 +409,7 @@ it('shows the saved actor name for new dashboard activity and labels null actors
     $audit->record($supportRequest, $administrator, 'assigned', ItSupportRequestStatus::Submitted, ItSupportRequestStatus::Assigned);
     $audit->record($supportRequest, null, 'work_started', ItSupportRequestStatus::Assigned, ItSupportRequestStatus::InProgress);
 
-    expect(DB::table('it_support_request_logs')->where('action', 'assigned')->value('user_id'))
+    expect(DB::table('request_logs')->where('action', 'assigned')->value('user_id'))
         ->toBe($administrator->user_id);
 
     $this->actingAs($administrator)->get(route('dashboard'))->assertOk()
@@ -470,7 +430,7 @@ it('filters the queue by status, type, division, priority, and technician includ
     $technician = User::factory()->create(['division' => Division::EDP]);
     $type = RequestType::factory()->create(['name' => 'Filtered request type']);
     $match = makeDashboardRequest($requester, [
-        'request_type_id' => $type->getKey(),
+        'request_types_id' => $type->getKey(),
         'division' => Division::EDP,
         'priority' => ItSupportRequestPriority::Urgent,
         'status' => ItSupportRequestStatus::Assigned,
@@ -548,7 +508,6 @@ it('shows assignment actions only on their matching status tabs and hides stale 
     $requester = User::factory()->create();
     $technician = User::factory()->create(['division' => Division::EDP]);
     $submitted = makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Submitted]);
-    $approved = makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Approved]);
     $assigned = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Assigned,
         'assigned_technician_id' => $technician->getKey(),
@@ -562,10 +521,8 @@ it('shows assignment actions only on their matching status tabs and hides stale 
         'assigned_technician_id' => $technician->getKey(),
     ]);
     foreach ([
-        ItSupportRequestStatus::PendingApproval,
         ItSupportRequestStatus::Resolved,
         ItSupportRequestStatus::Cancelled,
-        ItSupportRequestStatus::Rejected,
     ] as $status) {
         makeDashboardRequest($requester, ['status' => $status]);
     }
@@ -580,7 +537,7 @@ it('shows assignment actions only on their matching status tabs and hides stale 
         ->set('status', '')
         ->assertDontSee('data-queue-action=', false)
         ->assertDontSee('assignment-panel-'.$submitted->getKey(), false)
-        ->set('status', ItSupportRequestStatus::Approved->value)
+        ->set('status', ItSupportRequestStatus::Submitted->value)
         ->assertSee('data-queue-action="assign"', false)
         ->assertDontSee('data-queue-action="reassign"', false)
         ->set('status', ItSupportRequestStatus::Assigned->value)
@@ -592,17 +549,12 @@ it('shows assignment actions only on their matching status tabs and hides stale 
         ->assertSee('data-queue-action="reassign"', false)
         ->set('status', ItSupportRequestStatus::Closed->value)
         ->assertDontSee('data-queue-action=', false)
-        ->set('status', ItSupportRequestStatus::PendingApproval->value)
-        ->assertDontSee('data-queue-action=', false)
         ->set('status', ItSupportRequestStatus::Resolved->value)
         ->assertDontSee('data-queue-action=', false)
         ->set('status', ItSupportRequestStatus::Cancelled->value)
-        ->assertDontSee('data-queue-action=', false)
-        ->set('status', ItSupportRequestStatus::Rejected->value)
         ->assertDontSee('data-queue-action=', false);
 
     expect($component->get('assignmentRequestId'))->toBeNull()
-        ->and($approved->exists)->toBeTrue()
         ->and($assigned->exists)->toBeTrue()
         ->and($inProgress->exists)->toBeTrue()
         ->and($onHold->exists)->toBeTrue();
@@ -614,10 +566,9 @@ it('always includes request type requester and division in secondary metadata wh
     $type = RequestType::factory()->create(['name' => 'Password reset']);
     $supportRequest = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Submitted,
-        'request_type_id' => $type->getKey(),
+        'request_types_id' => $type->getKey(),
         'support_type' => $type->name,
         'summary' => $type->name,
-        'details' => null,
         'requester_name' => 'Queue metadata requester',
         'division' => Division::EDP,
     ]);
@@ -670,7 +621,7 @@ it('marks assigned tickets overdue after two working days without activity', fun
             'assigned_technician_id' => $administrator->getKey(),
             'status' => ItSupportRequestStatus::Assigned,
         ]);
-        DB::table('it_support_requests')->where('id', $overdue->getKey())->update([
+        DB::table('support_requests')->where('requests_id', $overdue->getKey())->update([
             'updated_at' => '2026-10-07 11:00:00',
         ]);
 
@@ -690,17 +641,11 @@ it('shows the saved short title and request type on assigned request rows', func
         'assigned_technician_id' => $administrator->getKey(),
         'summary' => 'Payroll system unavailable',
         'support_type' => 'Troubleshoot System / Application',
-        'details' => 'Legacy value must not take precedence.',
-    ]);
-    $answerBacked->detailsRows()->create([
-        'field_key' => 'system',
-        'field_label' => 'System',
-        'field_value' => 'Payroll system answer',
+        'answers' => ['system' => 'Payroll system answer'],
     ]);
     $legacy = makeDashboardRequest($requester, [
         'assigned_technician_id' => $administrator->getKey(),
         'summary' => 'Older request summary',
-        'details' => 'Legacy ticket fallback text.',
     ]);
 
     Livewire::actingAs($administrator)
@@ -708,7 +653,7 @@ it('shows the saved short title and request type on assigned request rows', func
         ->assertSee('Payroll system unavailable')
         ->assertSee('Troubleshoot System / Application')
         ->assertSee('Older request summary')
-        ->assertDontSee('Legacy value must not take precedence.');
+        ->assertDontSee('Payroll system answer');
 });
 
 it('filters the queue by requested date range and searches ticket number and requester name', function () {
@@ -784,7 +729,7 @@ it('keeps active queue filters in the URL and pagination links', function () {
 
     foreach (range(1, 21) as $number) {
         makeDashboardRequest($requester, [
-            'request_type_id' => $type->getKey(),
+            'request_types_id' => $type->getKey(),
             'status' => ItSupportRequestStatus::Submitted,
             'priority' => ItSupportRequestPriority::Urgent,
         ]);
@@ -805,7 +750,7 @@ it('keeps active queue filters in the URL and pagination links', function () {
         ->assertSet('status', ItSupportRequestStatus::Submitted->value)
         ->assertSet('requestType', (string) $type->getKey())
         ->assertSee('data-status-tab="submitted"', false)
-        ->assertSee(ItSupportRequest::query()->orderBy('id')->skip(20)->value('ticket_no'));
+        ->assertSee(SupportRequest::query()->orderBy('requests_id')->skip(20)->value('ticket_no'));
 });
 
 it('filters queue results by priority, resolves today, overdue, and preserves sorting filters in the URL', function () {

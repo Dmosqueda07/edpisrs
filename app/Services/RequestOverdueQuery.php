@@ -19,28 +19,27 @@ class RequestOverdueQuery
 
     public function joinLatestActivity(Builder $query): Builder
     {
-        $latestActivity = DB::table('it_support_request_logs')
-            ->select('it_support_request_id')
+        $latestActivity = DB::table('request_logs')
+            ->select('requests_id')
             ->selectRaw('MAX(created_at) AS latest_activity')
-            ->groupBy('it_support_request_id');
+            ->groupBy('requests_id');
 
         return $query->leftJoinSub($latestActivity, 'latest_request_activity', function ($join): void {
-            $join->on('latest_request_activity.it_support_request_id', '=', 'it_support_requests.id');
+            $join->on('latest_request_activity.requests_id', '=', 'support_requests.requests_id');
         });
     }
 
     public function whereOverdue(Builder $query): Builder
     {
         return $query
-            ->whereIn('it_support_requests.status', [
+            ->whereIn('support_requests.status', [
                 ItSupportRequestStatus::Submitted->value,
-                ItSupportRequestStatus::Approved->value,
                 ItSupportRequestStatus::Assigned->value,
                 ItSupportRequestStatus::InProgress->value,
                 ItSupportRequestStatus::OnHold->value,
             ])
             ->whereRaw(
-                'COALESCE(latest_request_activity.latest_activity, it_support_requests.updated_at) < ?',
+                'COALESCE(latest_request_activity.latest_activity, support_requests.updated_at) < ?',
                 [$this->cutoff()->toDateTimeString()],
             );
     }

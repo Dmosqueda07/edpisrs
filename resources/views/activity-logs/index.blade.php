@@ -53,7 +53,7 @@
                                     <td class="whitespace-nowrap p-3">{{ $log->created_at->format('M j, Y g:i A') }}</td>
                                     <td class="p-3">{{ $log->user?->full_name ?? 'System' }}<span class="mt-1 block text-xs text-slate-500">{{ $log->user?->role?->value ?? 'System' }}</span></td>
                                     <td class="p-3 font-medium text-slate-800">{{ \App\Http\Controllers\ActivityLogController::actionLabel($log->action) }}</td>
-                                    <td class="whitespace-nowrap p-3">@if($log->itSupportRequest)<a class="font-semibold text-blue-700 underline hover:text-blue-900" href="{{ route('it-support-requests.show', $log->itSupportRequest) }}">{{ $log->itSupportRequest->ticket_no }}</a>@else—@endif</td>
+                                    <td class="whitespace-nowrap p-3">@if($log->supportRequest)<a class="font-semibold text-blue-700 underline hover:text-blue-900" href="{{ route('it-support-requests.show', $log->supportRequest) }}">{{ $log->supportRequest->ticket_no }}</a>@else—@endif</td>
                                     <td class="whitespace-nowrap p-3">@if($log->from_status && $log->to_status){{ str($log->from_status)->replace('_', ' ')->title() }} → {{ str($log->to_status)->replace('_', ' ')->title() }}@else—@endif</td>
                                     <td class="max-w-sm whitespace-pre-wrap p-3 text-slate-600">{{ $log->remarks ?: '—' }}</td>
                                 </tr>

@@ -17,8 +17,4 @@
             @can('viewActivityLogs')<a role="menuitem" href="{{ route('activity-logs.index') }}" @if($isActive('activity-logs.*')) aria-current="page" @endif wire:navigate>Activity logs</a>@endcan
         </div>
     </div>
-@else
-    @can('viewApprovalQueue', \App\Models\ItSupportRequest::class)
-        <a class="{{ $linkClass }} {{ $isActive('approvals.*') ? $activeClass : '' }}" href="{{ route('approvals.it-support-requests.index') }}" @if($isActive('approvals.*')) aria-current="page" @endif wire:navigate>Approvals @if($badgeCounts['approvals'] > 0)<span class="app-nav-badge app-nav-badge-attention">{{ $badgeCounts['approvals'] > 99 ? '99+' : $badgeCounts['approvals'] }}</span>@endif</a>
-    @endcan
 @endif

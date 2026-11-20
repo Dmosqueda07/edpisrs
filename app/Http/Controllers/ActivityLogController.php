@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ItSupportRequestLog;
+use App\Models\RequestLog;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -14,15 +14,13 @@ class ActivityLogController extends Controller
         'assigned' => 'Assigned the request',
         'reassigned' => 'Reassigned the request',
         'priority_changed' => 'Changed the priority',
-        'approval_blocked_self' => 'Blocked a self-approval attempt',
-        'approval_decision' => 'Recorded an approval decision',
         'work_started' => 'Started work',
+        'put_on_hold' => 'Put the request on hold',
+        'resumed' => 'Resumed work',
         'resolved' => 'Marked as resolved',
         'requester_confirmed' => 'Confirmed completion',
         'cancelled' => 'Cancelled the request',
         'reopened' => 'Reopened the request',
-        'internal_note_added' => 'Added an internal note',
-        'comment_added' => 'Added a comment',
         'attachment_uploaded' => 'Uploaded an attachment',
         'submitted' => 'Submitted the request',
     ];
@@ -43,16 +41,16 @@ class ActivityLogController extends Controller
 
         $logs = null;
         if ($tab === 'requests') {
-            $logs = ItSupportRequestLog::query()
+            $logs = RequestLog::query()
                 ->with([
                     'user:user_id,first_name,last_name,role',
-                    'itSupportRequest:id,ticket_no,requester_name,requester_user_id',
-                    'itSupportRequest.requester:user_id,first_name,last_name',
+                    'supportRequest:requests_id,ticket_no,requester_name,requester_user_id',
+                    'supportRequest.requester:user_id,first_name,last_name',
                 ])
                 ->when($filters['search'] ?? null, function ($query, string $search): void {
                     $query->where(function ($query) use ($search): void {
                         $query->whereHas('user', fn ($user) => $user->where('first_name', 'like', '%'.$search.'%')->orWhere('last_name', 'like', '%'.$search.'%'))
-                            ->orWhereHas('itSupportRequest', function ($request) use ($search): void {
+                            ->orWhereHas('supportRequest', function ($request) use ($search): void {
                                 $request->where('ticket_no', 'like', '%'.$search.'%')
                                     ->orWhere('requester_name', 'like', '%'.$search.'%')
                                     ->orWhereHas('requester', fn ($requester) => $requester->where('first_name', 'like', '%'.$search.'%')->orWhere('last_name', 'like', '%'.$search.'%'));
@@ -62,7 +60,7 @@ class ActivityLogController extends Controller
                 ->when($filters['start'] ?? null, fn ($query, string $date) => $query->where('created_at', '>=', CarbonImmutable::parse($date)->startOfDay()))
                 ->when($filters['end'] ?? null, fn ($query, string $date) => $query->where('created_at', '<', CarbonImmutable::parse($date)->addDay()->startOfDay()))
                 ->when($filters['action'] ?? null, fn ($query, string $action) => $query->where('action', $action))
-                ->orderByDesc('created_at')->orderByDesc('id')
+                ->orderByDesc('created_at')->orderByDesc('logs_id')
                 ->paginate(25)->withQueryString();
         }
 

@@ -1,7 +1,7 @@
 <?php
 
 use App\Livewire\Actions\Logout;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Services\NavigationBadgeCounts;
 use Livewire\Volt\Component;
 
@@ -16,8 +16,8 @@ new class extends Component
 }; ?>
 
 @php($badgeCounts = app(NavigationBadgeCounts::class)->for(auth()->user()))
-@php($administrator = auth()->user()->can('manageAssignments', ItSupportRequest::class))
-@php($showAssigned = auth()->user()->can('viewAssigned', ItSupportRequest::class) || auth()->user()->can('viewAssignedQueue', ItSupportRequest::class))
+@php($administrator = auth()->user()->can('manageAssignments', SupportRequest::class))
+@php($showAssigned = auth()->user()->can('viewAssigned', SupportRequest::class) || auth()->user()->can('viewAssignedQueue', SupportRequest::class))
 
 <nav x-data="{ open: false }" x-on:keydown.escape.window="open = false" class="app-nav">
     <div class="app-nav-inner">

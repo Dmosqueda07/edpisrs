@@ -68,18 +68,6 @@
                     </article>
 
                     <article class="flex min-h-40 flex-col rounded-lg border border-gray-200 border-t-2 border-t-blue-700 bg-white p-5 shadow-sm">
-                        <h3 class="font-semibold text-[#122643]">Approvals</h3>
-                        <p class="mt-3 text-2xl font-semibold text-gray-900">{{ $shortcuts['approvals']['count'] }}</p>
-                        <p class="text-sm text-gray-600">Requests waiting for a decision</p>
-                        @if ($shortcuts['approvals']['count'] > 0)
-                            <span class="mt-2 w-fit rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">Oldest has waited {{ $shortcuts['approvals']['oldest'] }}</span>
-                        @else
-                            <p class="mt-2 text-xs text-gray-500">No approvals waiting</p>
-                        @endif
-                        <a href="{{ $shortcuts['approvals']['url'] }}" wire:navigate class="mt-auto pt-4 text-sm font-semibold text-blue-800 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">Open approvals <span aria-hidden="true">→</span></a>
-                    </article>
-
-                    <article class="flex min-h-40 flex-col rounded-lg border border-gray-200 border-t-2 border-t-blue-700 bg-white p-5 shadow-sm">
                         <h3 class="font-semibold text-[#122643]">Reports</h3>
                         <p class="mt-3 text-sm text-gray-600">This month</p>
                         <div class="mt-1 flex gap-5 text-sm"><p><strong class="text-xl text-gray-900">{{ $shortcuts['reports']['received'] }}</strong><br>Received</p><p><strong class="text-xl text-gray-900">{{ $shortcuts['reports']['resolved'] }}</strong><br>Resolved</p></div>
@@ -98,7 +86,7 @@
                             <ul class="mt-3 divide-y divide-gray-100">
                                 @foreach ($shortcuts['activity']['entries'] as $entry)
                                     <li class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm">
-                                        <p class="min-w-0 flex-1 text-gray-700"><span class="font-medium text-gray-900">{{ $entry->user?->full_name ?? 'System' }}</span> {{ \App\Http\Controllers\ActivityLogController::actionLabel($entry->action) }} <span class="font-semibold text-blue-800">{{ $entry->itSupportRequest?->ticket_no ?? 'Request unavailable' }}</span></p>
+                                        <p class="min-w-0 flex-1 text-gray-700"><span class="font-medium text-gray-900">{{ $entry->user?->full_name ?? 'System' }}</span> {{ \App\Http\Controllers\ActivityLogController::actionLabel($entry->action) }} <span class="font-semibold text-blue-800">{{ $entry->supportRequest?->ticket_no ?? 'Request unavailable' }}</span></p>
                                         <time class="shrink-0 text-xs text-gray-500" datetime="{{ $entry->created_at?->toIso8601String() }}">{{ $entry->created_at?->format('M j, Y g:i A') }}</time>
                                     </li>
                                 @endforeach

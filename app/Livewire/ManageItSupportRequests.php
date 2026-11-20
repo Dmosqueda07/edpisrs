@@ -5,7 +5,7 @@ namespace App\Livewire;
 use App\Enums\Division;
 use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Models\RequestType;
 use App\Models\User;
 use App\Services\RequestOverdueQuery;
@@ -74,7 +74,7 @@ class ManageItSupportRequests extends Component
         if ($property === 'status') {
             $this->closeAssignment();
 
-            if (! in_array($this->status, ['', 'submitted', 'approved', 'assigned', 'in_progress', 'on_hold'], true)) {
+            if (! in_array($this->status, ['', 'submitted', 'assigned', 'in_progress', 'on_hold'], true)) {
                 $this->overdue = false;
             }
         }
@@ -110,7 +110,7 @@ class ManageItSupportRequests extends Component
 
     public function openAssignment(int $requestId): void
     {
-        $supportRequest = ItSupportRequest::query()->findOrFail($requestId);
+        $supportRequest = SupportRequest::query()->findOrFail($requestId);
         Gate::authorize('assign', $supportRequest);
 
         $this->assignmentRequestId = $requestId;
@@ -127,12 +127,12 @@ class ManageItSupportRequests extends Component
 
     public function render(): View
     {
-        Gate::authorize('manageAssignments', ItSupportRequest::class);
+        Gate::authorize('manageAssignments', SupportRequest::class);
 
         $validated = $this->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'status' => [Rule::when($this->status !== '', Rule::in(array_column(ItSupportRequestStatus::cases(), 'value')))],
-            'requestType' => [Rule::when($this->requestType !== '', ['integer', Rule::exists('request_types', 'id')])],
+            'requestType' => [Rule::when($this->requestType !== '', ['integer', Rule::exists('request_types', 'request_types_id')])],
             'division' => [Rule::when($this->division !== '', Rule::in(array_column(Division::cases(), 'value')))],
             'priority' => [Rule::when($this->priority !== '', Rule::in(array_column(ItSupportRequestPriority::cases(), 'value')))],
             'technician' => [
@@ -158,36 +158,36 @@ class ManageItSupportRequests extends Component
             'overdue' => ['boolean'],
         ]);
 
-        $query = ItSupportRequest::query()
-            ->select('it_support_requests.*')
-            ->selectRaw('COALESCE(latest_request_activity.latest_activity, it_support_requests.updated_at) AS last_activity_at');
+        $query = SupportRequest::query()
+            ->select('support_requests.*')
+            ->selectRaw('COALESCE(latest_request_activity.latest_activity, support_requests.updated_at) AS last_activity_at');
         app(RequestOverdueQuery::class)->joinLatestActivity($query);
         $this->applyFilters($query, $validated);
 
         $statusCounts = (clone $query)
             ->reorder()
-            ->select('it_support_requests.status')
+            ->select('support_requests.status')
             ->selectRaw('COUNT(*) AS request_count')
-            ->groupBy('it_support_requests.status')
+            ->groupBy('support_requests.status')
             ->pluck('request_count', 'status')
             ->map(fn ($count): int => (int) $count);
 
         $query->with(['technician', 'requestType'])
-            ->when($validated['status'] ?? null, fn ($query, string $status) => $query->where('it_support_requests.status', $status));
+            ->when($validated['status'] ?? null, fn ($query, string $status) => $query->where('support_requests.status', $status));
 
         if (($validated['sort'] ?? 'oldest') === 'priority') {
             $query->orderByRaw("CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END");
         }
 
         $query
-            ->when(($validated['sort'] ?? 'oldest') === 'newest', fn ($query) => $query->orderByDesc('requested_at')->orderByDesc('id'))
-            ->when(in_array(($validated['sort'] ?? 'oldest'), ['oldest', 'age', 'priority'], true), fn ($query) => $query->orderBy('requested_at')->orderBy('id'));
+            ->when(($validated['sort'] ?? 'oldest') === 'newest', fn ($query) => $query->orderByDesc('requested_at')->orderByDesc('requests_id'))
+            ->when(in_array(($validated['sort'] ?? 'oldest'), ['oldest', 'age', 'priority'], true), fn ($query) => $query->orderBy('requested_at')->orderBy('requests_id'));
 
         $requests = $query->paginate(20)
             ->appends(['tab' => $validated['status'] ?? ''])
             ->withQueryString();
 
-        $workloads = DB::table('it_support_requests')
+        $workloads = DB::table('support_requests')
             ->select('assigned_technician_id')
             ->selectRaw('COUNT(*) AS open_workload')
             ->whereIn('status', [
@@ -216,15 +216,12 @@ class ManageItSupportRequests extends Component
             'priorities' => ItSupportRequestPriority::cases(),
             'statuses' => [
                 ItSupportRequestStatus::Submitted,
-                ItSupportRequestStatus::PendingApproval,
-                ItSupportRequestStatus::Approved,
                 ItSupportRequestStatus::Assigned,
                 ItSupportRequestStatus::InProgress,
                 ItSupportRequestStatus::OnHold,
                 ItSupportRequestStatus::Resolved,
                 ItSupportRequestStatus::Closed,
                 ItSupportRequestStatus::Cancelled,
-                ItSupportRequestStatus::Rejected,
             ],
             'statusCounts' => $statusCounts,
             'allCount' => $statusCounts->sum(),
@@ -242,7 +239,7 @@ class ManageItSupportRequests extends Component
             ])->filter(fn ($value) => $value !== '')->count(),
             'overdueCutoff' => app(RequestOverdueQuery::class)->cutoff(),
             'assignmentRequest' => $this->assignmentRequestId
-                ? ItSupportRequest::query()->with(['technician'])->find($this->assignmentRequestId)
+                ? SupportRequest::query()->with(['technician'])->find($this->assignmentRequestId)
                 : null,
             'assignmentTechnician' => $this->assignmentTechnician,
             'assignmentPriority' => $this->assignmentPriority,
@@ -275,7 +272,7 @@ class ManageItSupportRequests extends Component
                     }
                 });
             })
-            ->when($validated['requestType'] ?? null, fn (Builder $query, string $type) => $query->where('request_type_id', $type))
+            ->when($validated['requestType'] ?? null, fn (Builder $query, string $type) => $query->where('request_types_id', $type))
             ->when($validated['division'] ?? null, fn (Builder $query, string $division) => $query->where('division', $division))
             ->when($validated['priority'] ?? null, fn (Builder $query, string $priority) => $query->where('priority', $priority))
             ->when($validated['technician'] ?? null, function (Builder $query, string $technician): void {
@@ -289,11 +286,7 @@ class ManageItSupportRequests extends Component
             ->when($validated['awaitingAssignment'] ?? false, function (Builder $query): void {
                 $query->whereNull('assigned_technician_id')
                     ->where(function (Builder $query): void {
-                        $query->where('status', ItSupportRequestStatus::Approved->value)
-                            ->orWhere(function (Builder $query): void {
-                                $query->where('status', ItSupportRequestStatus::Submitted->value)
-                                    ->where('requires_approval', false);
-                            });
+                        $query->where('status', ItSupportRequestStatus::Submitted->value);
                     });
             })
             ->when($validated['resolvedToday'] ?? false, fn (Builder $query) => $query

@@ -2,22 +2,22 @@
 
 namespace Database\Factories;
 
-use App\Models\ItSupportRequest;
-use App\Models\ItSupportRequestLog;
+use App\Models\SupportRequest;
+use App\Models\RequestLog;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<ItSupportRequestLog>
+ * @extends Factory<RequestLog>
  */
-class ItSupportRequestLogFactory extends Factory
+class RequestLogFactory extends Factory
 {
-    protected $model = ItSupportRequestLog::class;
+    protected $model = RequestLog::class;
 
     public function definition(): array
     {
         return [
-            'it_support_request_id' => ItSupportRequest::factory(),
+            'requests_id' => SupportRequest::factory(),
             'user_id' => User::factory(),
             'action' => 'created',
             'from_status' => null,

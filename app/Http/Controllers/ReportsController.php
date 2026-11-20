@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ItSupportRequestStatus;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Models\RequestType;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -29,17 +29,17 @@ class ReportsController extends Controller
         $tab = $validated['tab'] ?? 'accomplishments';
         $technicianId = $validated['technician'] ?? null;
 
-        $completed = ItSupportRequest::query()
+        $completed = SupportRequest::query()
             ->with(['requestType:id,name', 'technician:user_id,first_name,last_name'])
             ->where('completed_at', '>=', $from)
             ->where('completed_at', '<', $until)
             ->when($technicianId, fn ($query) => $query->where('assigned_technician_id', $technicianId))
             ->orderBy('completed_at')
-            ->get(['id', 'ticket_no', 'requested_at', 'completed_at', 'requester_user_id', 'requester_name', 'division', 'request_type_id', 'assigned_technician_id', 'support_type', 'resolution_notes']);
+            ->get(['requests_id', 'ticket_no', 'requested_at', 'completed_at', 'requester_user_id', 'requester_name', 'division', 'request_types_id', 'assigned_technician_id', 'support_type', 'resolution_notes']);
 
-        $base = fn () => DB::table('it_support_requests')->where('requested_at', '>=', $from)->where('requested_at', '<', $until);
+        $base = fn () => DB::table('support_requests')->where('requested_at', '>=', $from)->where('requested_at', '<', $until);
         $divisionRows = (clone $base())->select('division', DB::raw('COUNT(*) as total'))->groupBy('division')->orderBy('division')->get();
-        $typeRows = (clone $base())->leftJoin('request_types', 'it_support_requests.request_type_id', '=', 'request_types.id')
+        $typeRows = (clone $base())->leftJoin('request_types', 'support_requests.request_types_id', '=', 'request_types.request_types_id')
             ->select('request_types.name as name', DB::raw('COUNT(*) as total'))->groupBy('request_types.name')->orderByDesc('total')->orderBy('name')->get();
 
         $statusRows = (clone $base())->select('status', DB::raw('COUNT(*) as total'))->groupBy('status')->get();
@@ -48,13 +48,13 @@ class ReportsController extends Controller
             $statusCounts[$status->value] = (int) ($statusRows->firstWhere('status', $status->value)->total ?? 0);
         }
 
-        $turnaroundRequests = (clone $base())->get(['request_type_id', 'assigned_technician_id', 'requested_at', 'assigned_at', 'completed_at']);
-        $typeNames = RequestType::query()->pluck('name', 'id');
+        $turnaroundRequests = (clone $base())->get(['request_types_id', 'assigned_technician_id', 'requested_at', 'assigned_at', 'completed_at']);
+        $typeNames = RequestType::query()->pluck('name', 'request_types_id');
         $technicians = User::query()->whereIn('user_id', $turnaroundRequests->pluck('assigned_technician_id')->filter()->unique())
             ->get(['user_id', 'first_name', 'last_name'])->keyBy('user_id');
         $turnaround = ['types' => [], 'technicians' => []];
         foreach ($turnaroundRequests as $row) {
-            $typeName = $typeNames[$row->request_type_id] ?? 'Unknown type';
+            $typeName = $typeNames[$row->request_types_id] ?? 'Unknown type';
             $this->addDuration($turnaround['types'], $typeName, $row);
             $technicianName = $technicians[$row->assigned_technician_id]->full_name ?? 'Unassigned';
             $this->addDuration($turnaround['technicians'], $technicianName, $row);

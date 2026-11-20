@@ -13,14 +13,16 @@ class RequestType extends Model
     /** @use HasFactory<RequestTypeFactory> */
     use HasFactory;
 
+    protected $table = 'request_types';
+
+    protected $primaryKey = 'request_types_id';
+
     protected $fillable = [
         'key',
         'name',
         'category',
         'remote_allowed',
         'follow_up_question',
-        'requires_approval',
-        'approval_roles',
         'sort_order',
         'is_active',
     ];
@@ -28,9 +30,7 @@ class RequestType extends Model
     protected function casts(): array
     {
         return [
-            'requires_approval' => 'boolean',
             'remote_allowed' => 'boolean',
-            'approval_roles' => 'array',
             'sort_order' => 'integer',
             'is_active' => 'boolean',
         ];
@@ -41,8 +41,8 @@ class RequestType extends Model
         return $query->where('is_active', true)->orderBy('sort_order');
     }
 
-    public function itSupportRequests(): HasMany
+    public function supportRequests(): HasMany
     {
-        return $this->hasMany(ItSupportRequest::class);
+        return $this->hasMany(SupportRequest::class, 'request_types_id', 'request_types_id');
     }
 }

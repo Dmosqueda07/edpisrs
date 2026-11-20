@@ -5,7 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\Division;
 use App\Enums\ItSupportRequestPriority;
 use App\Enums\UserStatus;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -15,7 +15,7 @@ class AssignItSupportRequestRequest extends FormRequest
     {
         $supportRequest = $this->route('it_support_request');
 
-        return $supportRequest instanceof ItSupportRequest
+        return $supportRequest instanceof SupportRequest
             && $this->user()?->can('assign', $supportRequest) === true;
     }
 

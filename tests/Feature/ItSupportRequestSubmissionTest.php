@@ -4,7 +4,7 @@ use App\Enums\Division;
 use App\Enums\ItSupportRequestPriority;
 use App\Livewire\ItSupportRequestForm;
 use App\Mail\ItSupportRequestReceived;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Models\RequestType;
 use App\Models\User;
 use Database\Seeders\RequestTypeSeeder;
@@ -94,19 +94,18 @@ it('stores a certified request and private attachment and queues confirmation em
         'certification' => '1',
     ]);
 
-    $supportRequest = ItSupportRequest::query()->firstOrFail();
+    $supportRequest = SupportRequest::query()->firstOrFail();
     $response->assertRedirect(route('it-support-requests.show', $supportRequest));
 
     expect($supportRequest->requester_user_id)->toBe($user->user_id)
         ->and($supportRequest->requester_name)->toBe('Avery Employee')
         ->and($supportRequest->division)->toBe(Division::EDP->value)
         ->and($supportRequest->summary)->toBe('Computer will not start')
-        ->and($supportRequest->request_type_id)->toBe($requestType->getKey())
+        ->and($supportRequest->request_types_id)->toBe($requestType->getKey())
         ->and($supportRequest->support_type)->toBe($requestType->name)
         ->and($supportRequest->priority)->toBe(ItSupportRequestPriority::Normal)
         ->and($supportRequest->summary)->toBe('Computer will not start')
-        ->and($supportRequest->detailsRows()->firstOrFail()->field_label)->toBe($requestType->follow_up_question)
-        ->and($supportRequest->detailsRows()->firstOrFail()->field_value)->toBe('Computer does not start after a restart.')
+        ->and($supportRequest->answers)->toBe(['details' => 'Computer does not start after a restart.'])
         ->and($supportRequest->certified_at)->not->toBeNull()
         ->and($supportRequest->status->value)->toBe('submitted');
 
@@ -122,7 +121,6 @@ it('stores a certified request and private attachment and queues confirmation em
         ->assertSee('Computer does not start after a restart.')
         ->assertSee('Computer will not start')
         ->assertSee('Normal')
-        ->assertDontSee('Type of IT Support Needed')
         ->assertDontSee('Certification</dt>')
         ->assertSee('· Certified')
         ->assertSee('computer.pdf');
@@ -142,7 +140,7 @@ it('stores a certified request and private attachment and queues confirmation em
         ->get(route('it-support-requests.attachments.download', [$supportRequest, $attachment]))
         ->assertForbidden();
 
-    $otherRequest = ItSupportRequest::factory()->for($user, 'requester')->create();
+    $otherRequest = SupportRequest::factory()->for($user, 'requester')->create();
     $this->actingAs($user)
         ->get(route('it-support-requests.attachments.download', [$otherRequest, $attachment]))
         ->assertNotFound();
@@ -154,7 +152,7 @@ it('stores a certified request and private attachment and queues confirmation em
 
 it('allows the requester to view their request when the database returns the user id as a string', function () {
     $user = User::factory()->create(['role' => \App\Enums\Role::Staff]);
-    $supportRequest = ItSupportRequest::factory()->for($user, 'requester')->create();
+    $supportRequest = SupportRequest::factory()->for($user, 'requester')->create();
     $supportRequest->setAttribute('requester_user_id', (string) $user->getKey());
 
     $this->actingAs($user)
@@ -176,7 +174,7 @@ it('accepts and records each valid request priority', function () {
             'certification' => '1',
         ])->assertRedirect();
 
-        $supportRequest = $user->itSupportRequests()->latest('id')->firstOrFail();
+        $supportRequest = $user->itSupportRequests()->latest('requests_id')->firstOrFail();
         expect($supportRequest->priority)->toBe($priority)
             ->and($supportRequest->logs()->where('action', 'submitted')->value('remarks'))
             ->toBe('Priority: '.\Illuminate\Support\Str::headline($priority->value));
@@ -211,8 +209,8 @@ it('requires a short title of no more than 120 characters', function () {
         'summary' => str_repeat('x', 120),
     ])->assertRedirect();
 
-    expect(ItSupportRequest::query()->count())->toBe(1)
-        ->and(ItSupportRequest::query()->firstOrFail()->summary)->toBe(str_repeat('x', 120));
+    expect(SupportRequest::query()->count())->toBe(1)
+        ->and(SupportRequest::query()->firstOrFail()->summary)->toBe(str_repeat('x', 120));
 });
 
 it('rejects a priority value outside the priority enum', function () {
@@ -227,7 +225,7 @@ it('rejects a priority value outside the priority enum', function () {
         'certification' => '1',
     ])->assertSessionHasErrors('priority');
 
-    expect(ItSupportRequest::query()->count())->toBe(0);
+    expect(SupportRequest::query()->count())->toBe(0);
 });
 
 it('accepts a request without an optional attachment', function () {
@@ -242,9 +240,9 @@ it('accepts a request without an optional attachment', function () {
             'answers' => ['details' => 'Please specify the support required.'],
             'certification' => '1',
         ])
-        ->assertRedirect(route('it-support-requests.show', ItSupportRequest::query()->firstOrFail()));
+        ->assertRedirect(route('it-support-requests.show', SupportRequest::query()->firstOrFail()));
 
-    expect(ItSupportRequest::query()->firstOrFail()->attachments()->count())->toBe(0);
+    expect(SupportRequest::query()->firstOrFail()->attachments()->count())->toBe(0);
 });
 
 it('requires a known support type, details, and certification', function () {
@@ -262,7 +260,7 @@ it('requires a known support type, details, and certification', function () {
         'certification' => '1',
     ])->assertSessionHasErrors('answers.details');
 
-    expect(ItSupportRequest::query()->count())->toBe(0);
+    expect(SupportRequest::query()->count())->toBe(0);
 });
 
 it('rejects invalid real MIME types, attachments over 5 MB, and more than five files', function () {
@@ -296,7 +294,7 @@ it('rejects invalid real MIME types, attachments over 5 MB, and more than five f
         ),
     ])->assertSessionHasErrors('attachments');
 
-    expect(ItSupportRequest::query()->count())->toBe(0);
+    expect(SupportRequest::query()->count())->toBe(0);
 });
 
 it('requires authentication to submit a request', function () {

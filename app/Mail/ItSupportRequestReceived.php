@@ -2,7 +2,7 @@
 
 namespace App\Mail;
 
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -14,7 +14,7 @@ class ItSupportRequestReceived extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public ItSupportRequest $supportRequest) {}
+    public function __construct(public SupportRequest $supportRequest) {}
 
     public function envelope(): Envelope
     {

@@ -2,7 +2,7 @@
 
 namespace App\Notifications;
 
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -13,7 +13,7 @@ class RequestAssigned extends Notification implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
-    public function __construct(private readonly ItSupportRequest $supportRequest) {}
+    public function __construct(private readonly SupportRequest $supportRequest) {}
 
     /**
      * @return array<int, string>

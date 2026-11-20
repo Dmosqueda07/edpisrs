@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Services\RequestDashboardMetrics;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\View;
@@ -14,7 +14,7 @@ class DashboardController extends Controller
         $user = request()->user();
         abort_unless($user, 403);
 
-        if (Gate::allows('viewAdminDashboard', ItSupportRequest::class)) {
+        if (Gate::allows('viewAdminDashboard', SupportRequest::class)) {
             $adminDashboard = $metrics->administratorDashboard($user);
             $cards = $adminDashboard['overview'];
             $assignedCards = [];

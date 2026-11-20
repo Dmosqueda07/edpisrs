@@ -20,21 +20,6 @@ class StoreItSupportRequestRequest extends FormRequest
             $this->merge(['priority' => ItSupportRequestPriority::Normal->value]);
         }
 
-        if ($this->has('answers') || ! $this->filled('details')) {
-            return;
-        }
-
-        $requestType = RequestType::query()->find($this->input('request_type_id'));
-        $definition = collect(config('request_forms.request_types'))
-            ->firstWhere('key', $requestType?->key);
-
-        if ($definition) {
-            $this->merge([
-                'answers' => [
-                    $definition['fields'][0]['key'] => $this->input('details'),
-                ],
-            ]);
-        }
     }
 
     /**
@@ -45,15 +30,20 @@ class StoreItSupportRequestRequest extends FormRequest
         $requestType = RequestType::query()->find($this->input('request_type_id'));
         $definition = collect(config('request_forms.request_types'))
             ->firstWhere('key', $requestType?->key);
+        $allowedAnswerKeys = collect($definition['fields'] ?? [])
+            ->pluck('key')
+            ->all();
         $rules = [
             'summary' => ['required', 'string', 'max:120'],
             'priority' => ['required', Rule::enum(ItSupportRequestPriority::class)],
             'request_type_id' => [
                 'required',
                 'integer',
-                Rule::exists('request_types', 'id')->where('is_active', true),
+                Rule::exists('request_types', 'request_types_id')->where('is_active', true),
             ],
-            'answers' => ['required', 'array'],
+            'answers' => $allowedAnswerKeys === []
+                ? ['required', 'array', Rule::in([])]
+                : ['required', 'array:'.implode(',', $allowedAnswerKeys)],
             'attachments' => ['nullable', 'array', 'max:5'],
             'attachments.*' => [
                 'file',

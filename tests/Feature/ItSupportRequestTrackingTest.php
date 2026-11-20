@@ -2,8 +2,9 @@
 
 use App\Enums\Role;
 use App\Livewire\MyItSupportRequests;
-use App\Models\ItSupportRequest;
-use App\Models\ItSupportRequestAttachment;
+use App\Models\SupportRequest;
+use App\Models\RequestAttachment;
+use App\Models\RequestType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -22,13 +23,13 @@ it('shows an empty state when the employee has not submitted a request', functio
 it('lists only the signed-in employee requests in the Livewire table', function () {
     $requester = User::factory()->create();
     $otherUser = User::factory()->create();
-    $ownRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $ownRequest = SupportRequest::factory()->for($requester, 'requester')->create([
         'summary' => 'Printer needs repair',
         'support_type' => 'Check / Repair Computer',
-        'details' => 'My own support request.',
+        'answers' => ['details' => 'My own support request.'],
     ]);
-    $otherRequest = ItSupportRequest::factory()->for($otherUser, 'requester')->create([
-        'details' => 'Another employee request.',
+    $otherRequest = SupportRequest::factory()->for($otherUser, 'requester')->create([
+        'answers' => ['details' => 'Another employee request.'],
     ]);
 
     $this->actingAs($requester);
@@ -41,7 +42,6 @@ it('lists only the signed-in employee requests in the Livewire table', function 
         ->assertSee('items-center justify-center bg-gray-950/60', false)
         ->assertSee('h-[85vh] max-h-[85vh] w-[92vw] max-w-[640px]', false)
         ->assertSee('opacity-0 transition-opacity duration-150', false)
-        ->assertSee('id="request-modal-summary"', false)
         ->assertSee('Cancel this request?')
         ->assertSee('This stops work on the request.')
         ->assertSee('undo it.')
@@ -56,10 +56,15 @@ it('lists only the signed-in employee requests in the Livewire table', function 
 
 it('shows a request to its requester', function () {
     $requester = User::factory()->create();
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $requestType = RequestType::factory()->create([
+        'key' => 'other-it-request',
+        'name' => 'Other IT Request',
+    ]);
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create([
+        'request_types_id' => $requestType->getKey(),
         'summary' => 'Older ticket summary stays unchanged',
         'support_type' => 'Other IT Request',
-        'details' => 'Please help with a system issue.',
+        'answers' => ['details' => 'Please help with a system issue.'],
     ]);
 
     $this->actingAs($requester)
@@ -85,9 +90,9 @@ it('prevents an employee from viewing or downloading another employee request', 
     $otherUser = User::factory()->create();
     $path = 'it-support-requests/private-document.pdf';
     Storage::disk('private')->put($path, '%PDF-1.4 private file');
-    $supportRequest = ItSupportRequest::factory()->for($owner, 'requester')->create();
-    ItSupportRequestAttachment::create([
-        'it_support_request_id' => $supportRequest->getKey(),
+    $supportRequest = SupportRequest::factory()->for($owner, 'requester')->create();
+    RequestAttachment::create([
+        'requests_id' => $supportRequest->getKey(),
         'uploaded_by' => $owner->getKey(),
         'file_path' => $path,
         'original_name' => basename($path),
@@ -106,7 +111,7 @@ it('prevents an employee from viewing or downloading another employee request', 
 it('allows an administrator to view any request', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $requester = User::factory()->create();
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
 
     $this->actingAs($administrator)
         ->get(route('it-support-requests.show', $supportRequest))
@@ -119,9 +124,9 @@ it('serves an attachment from its relationship with safe headers', function () {
     $requester = User::factory()->create();
     $path = 'it-support-requests/supporting-document.pdf';
     Storage::disk('private')->put($path, '%PDF-1.4 attachment');
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
-    $attachment = ItSupportRequestAttachment::create([
-        'it_support_request_id' => $supportRequest->getKey(),
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
+    $attachment = RequestAttachment::create([
+        'requests_id' => $supportRequest->getKey(),
         'uploaded_by' => $requester->getKey(),
         'file_path' => $path,
         'original_name' => basename($path),
@@ -143,22 +148,22 @@ it('serves an attachment from its relationship with safe headers', function () {
 it('lists every private image and PDF attachment on the request detail page', function () {
     Storage::fake('private');
     $requester = User::factory()->create();
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
     $imagePath = 'it-support-requests/equipment.png';
     $pdfPath = 'it-support-requests/invoice.pdf';
     Storage::disk('private')->put($imagePath, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/qN8AAAAASUVORK5CYII='));
     Storage::disk('private')->put($pdfPath, "%PDF-1.4\nexample");
 
-    ItSupportRequestAttachment::create([
-        'it_support_request_id' => $supportRequest->getKey(),
+    RequestAttachment::create([
+        'requests_id' => $supportRequest->getKey(),
         'uploaded_by' => $requester->getKey(),
         'file_path' => $imagePath,
         'original_name' => 'equipment.png',
         'mime_type' => 'image/png',
         'size' => Storage::disk('private')->size($imagePath),
     ]);
-    ItSupportRequestAttachment::create([
-        'it_support_request_id' => $supportRequest->getKey(),
+    RequestAttachment::create([
+        'requests_id' => $supportRequest->getKey(),
         'uploaded_by' => $requester->getKey(),
         'file_path' => $pdfPath,
         'original_name' => 'invoice.pdf',
@@ -192,9 +197,9 @@ it('keeps the legacy attachment URL as a relationship-backed compatibility redir
     $requester = User::factory()->create();
     $path = 'it-support-requests/legacy-photo.png';
     Storage::disk('private')->put($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/qN8AAAAASUVORK5CYII='));
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
-    $attachment = ItSupportRequestAttachment::create([
-        'it_support_request_id' => $supportRequest->getKey(),
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
+    $attachment = RequestAttachment::create([
+        'requests_id' => $supportRequest->getKey(),
         'uploaded_by' => $requester->getKey(),
         'file_path' => $path,
         'original_name' => basename($path),
@@ -225,9 +230,9 @@ it('forbids unauthorized users from loading attachment thumbnails and previews',
     $otherUser = User::factory()->create();
     $path = 'it-support-requests/private-image.png';
     Storage::disk('private')->put($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/qN8AAAAASUVORK5CYII='));
-    $supportRequest = ItSupportRequest::factory()->for($owner, 'requester')->create();
-    $attachment = ItSupportRequestAttachment::create([
-        'it_support_request_id' => $supportRequest->getKey(),
+    $supportRequest = SupportRequest::factory()->for($owner, 'requester')->create();
+    $attachment = RequestAttachment::create([
+        'requests_id' => $supportRequest->getKey(),
         'uploaded_by' => $owner->getKey(),
         'file_path' => $path,
         'original_name' => 'private-image.png',

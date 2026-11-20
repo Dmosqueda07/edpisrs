@@ -3,7 +3,7 @@
 use App\Enums\Division;
 use App\Enums\ItSupportRequestStatus;
 use App\Enums\Role;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Models\RequestType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,11 +33,11 @@ it('shows accomplishments completed on both date boundaries and their total', fu
     $admin = reportAdmin();
     $requester = User::factory()->create();
     $type = RequestType::factory()->create(['name' => 'Device setup']);
-    ItSupportRequest::factory()->for($requester, 'requester')->create([
-        'request_type_id' => $type->id, 'requested_at' => '2026-06-01 00:00:00', 'completed_at' => '2026-06-30 23:59:59',
+    SupportRequest::factory()->for($requester, 'requester')->create([
+        'request_types_id' => $type->getKey(), 'requested_at' => '2026-06-01 00:00:00', 'completed_at' => '2026-06-30 23:59:59',
         'resolution_notes' => 'Installed the required software', 'status' => ItSupportRequestStatus::Closed,
     ]);
-    ItSupportRequest::factory()->for($requester, 'requester')->create([
+    SupportRequest::factory()->for($requester, 'requester')->create([
         'requested_at' => '2026-06-30 23:59:59', 'completed_at' => '2026-07-01 00:00:00',
     ]);
 
@@ -48,7 +48,7 @@ it('shows accomplishments completed on both date boundaries and their total', fu
 it('uses the requester name snapshot in historical accomplishment reports', function () {
     $admin = reportAdmin();
     $requester = User::factory()->create(['first_name' => 'Current', 'last_name' => 'Name']);
-    ItSupportRequest::factory()->for($requester, 'requester')->create([
+    SupportRequest::factory()->for($requester, 'requester')->create([
         'requester_name' => 'Name At Submission',
         'requested_at' => '2026-06-15 12:00:00',
         'completed_at' => '2026-06-16 12:00:00',
@@ -66,7 +66,7 @@ it('shows division counts and percentages from requests received in the period',
     $admin = reportAdmin();
     $user = User::factory()->create();
     foreach ([Division::EDP, Division::EDP, Division::CA] as $division) {
-        ItSupportRequest::factory()->for($user, 'requester')->create(['division' => $division->value, 'requested_at' => '2026-06-15 12:00:00']);
+        SupportRequest::factory()->for($user, 'requester')->create(['division' => $division->value, 'requested_at' => '2026-06-15 12:00:00']);
     }
 
     $this->actingAs($admin)->get(route('reports.index', ['preset' => 'custom', 'start' => '2026-06-01', 'end' => '2026-06-30', 'tab' => 'division']))
@@ -79,7 +79,7 @@ it('orders request type counts from highest to lowest', function () {
     $common = RequestType::factory()->create(['name' => 'Password reset']);
     $rare = RequestType::factory()->create(['name' => 'New equipment']);
     foreach ([$common, $common, $rare] as $type) {
-        ItSupportRequest::factory()->for($user, 'requester')->create(['request_type_id' => $type->id, 'requested_at' => '2026-06-15 12:00:00']);
+        SupportRequest::factory()->for($user, 'requester')->create(['request_types_id' => $type->getKey(), 'requested_at' => '2026-06-15 12:00:00']);
     }
 
     $this->actingAs($admin)->get(route('reports.index', ['preset' => 'custom', 'start' => '2026-06-01', 'end' => '2026-06-30', 'tab' => 'type']))
@@ -91,8 +91,8 @@ it('shows plain language turnaround averages per type and technician', function 
     $user = User::factory()->create();
     $technician = User::factory()->create(['division' => Division::EDP, 'role' => Role::Staff]);
     $type = RequestType::factory()->create(['name' => 'Network support']);
-    ItSupportRequest::factory()->for($user, 'requester')->create([
-        'request_type_id' => $type->id, 'assigned_technician_id' => $technician->user_id,
+    SupportRequest::factory()->for($user, 'requester')->create([
+        'request_types_id' => $type->getKey(), 'assigned_technician_id' => $technician->user_id,
         'requested_at' => '2026-06-10 00:00:00', 'assigned_at' => '2026-06-11 03:00:00', 'completed_at' => '2026-06-12 05:00:00',
     ]);
 
@@ -104,7 +104,7 @@ it('summarizes all request statuses for the received date range', function () {
     $admin = reportAdmin();
     $user = User::factory()->create();
     foreach ([ItSupportRequestStatus::Submitted, ItSupportRequestStatus::Resolved, ItSupportRequestStatus::Closed] as $status) {
-        ItSupportRequest::factory()->for($user, 'requester')->create(['status' => $status, 'requested_at' => '2026-06-15 12:00:00']);
+        SupportRequest::factory()->for($user, 'requester')->create(['status' => $status, 'requested_at' => '2026-06-15 12:00:00']);
     }
 
     $this->actingAs($admin)->get(route('reports.index', ['preset' => 'custom', 'start' => '2026-06-01', 'end' => '2026-06-30', 'tab' => 'status']))

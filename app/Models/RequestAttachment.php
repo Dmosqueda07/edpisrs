@@ -2,18 +2,22 @@
 
 namespace App\Models;
 
-use Database\Factories\ItSupportRequestAttachmentFactory;
+use Database\Factories\RequestAttachmentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ItSupportRequestAttachment extends Model
+class RequestAttachment extends Model
 {
-    /** @use HasFactory<ItSupportRequestAttachmentFactory> */
+    /** @use HasFactory<RequestAttachmentFactory> */
     use HasFactory;
 
+    protected $table = 'request_attachments';
+
+    protected $primaryKey = 'attachments_id';
+
     protected $fillable = [
-        'it_support_request_id',
+        'requests_id',
         'uploaded_by',
         'file_path',
         'original_name',
@@ -28,9 +32,9 @@ class ItSupportRequestAttachment extends Model
         ];
     }
 
-    public function itSupportRequest(): BelongsTo
+    public function supportRequest(): BelongsTo
     {
-        return $this->belongsTo(ItSupportRequest::class);
+        return $this->belongsTo(SupportRequest::class, 'requests_id', 'requests_id');
     }
 
     public function uploader(): BelongsTo

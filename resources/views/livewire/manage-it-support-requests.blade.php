@@ -1,18 +1,15 @@
 @php
     $statusLabels = [
         'submitted' => 'Submitted',
-        'pending_approval' => 'Pending approval',
-        'approved' => 'Approved',
         'assigned' => 'Assigned',
         'in_progress' => 'In progress',
         'on_hold' => 'On hold',
         'resolved' => 'Resolved',
         'closed' => 'Closed',
         'cancelled' => 'Cancelled',
-        'rejected' => 'Rejected',
     ];
     $currentStatusLabel = $statusLabels[$status] ?? 'All';
-    $openStatuses = ['', 'submitted', 'approved', 'assigned', 'in_progress', 'on_hold'];
+    $openStatuses = ['', 'submitted', 'assigned', 'in_progress', 'on_hold'];
 @endphp
 
 <div class="space-y-5">
@@ -149,16 +146,13 @@
                             @php
                                 $requestIsOverdue = in_array($supportRequest->status, [
                                     \App\Enums\ItSupportRequestStatus::Submitted,
-                                    \App\Enums\ItSupportRequestStatus::Approved,
                                     \App\Enums\ItSupportRequestStatus::Assigned,
                                     \App\Enums\ItSupportRequestStatus::InProgress,
                                     \App\Enums\ItSupportRequestStatus::OnHold,
                                 ], true) && \Carbon\Carbon::parse($supportRequest->last_activity_at)->lt($overdueCutoff);
                                 $requestTitle = filled($supportRequest->summary)
                                     ? $supportRequest->summary
-                                    : (filled($supportRequest->details)
-                                        ? \Illuminate\Support\Str::limit($supportRequest->details, 72)
-                                        : $supportRequest->support_type);
+                                    : $supportRequest->support_type;
                                 $requestTypeName = $supportRequest->requestType?->name ?? $supportRequest->support_type;
                             @endphp
                             <tr tabindex="0" data-request-modal-url="{{ route('it-support-requests.show', $supportRequest) }}" wire:key="support-request-{{ $supportRequest->getKey() }}"
@@ -200,14 +194,6 @@
                                                     Assign
                                                 </button>
                                             @endif
-                                        @elseif ($status === \App\Enums\ItSupportRequestStatus::Approved->value && $supportRequest->status === \App\Enums\ItSupportRequestStatus::Approved)
-                                            @if ($technicians->isEmpty())
-                                                <span class="text-xs text-gray-500">No active EDP technicians are available.</span>
-                                            @else
-                                                <button type="button" data-queue-action="assign" wire:click="openAssignment({{ $supportRequest->getKey() }})" class="rounded-md border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-800 hover:bg-blue-50">
-                                                    Assign
-                                                </button>
-                                            @endif
                                         @elseif (in_array($status, [\App\Enums\ItSupportRequestStatus::Assigned->value, \App\Enums\ItSupportRequestStatus::InProgress->value, \App\Enums\ItSupportRequestStatus::OnHold->value], true) && $supportRequest->status->value === $status)
                                             @if ($technicians->isEmpty())
                                                 <span class="text-xs text-gray-500">No active EDP technicians are available.</span>
@@ -225,7 +211,6 @@
                                 && $status === $supportRequest->status->value
                                 && in_array($status, [
                                     \App\Enums\ItSupportRequestStatus::Submitted->value,
-                                    \App\Enums\ItSupportRequestStatus::Approved->value,
                                     \App\Enums\ItSupportRequestStatus::Assigned->value,
                                     \App\Enums\ItSupportRequestStatus::InProgress->value,
                                     \App\Enums\ItSupportRequestStatus::OnHold->value,

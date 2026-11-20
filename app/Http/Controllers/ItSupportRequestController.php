@@ -2,17 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\ApprovalDecision;
 use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
 use App\Http\Requests\AssignItSupportRequestRequest;
-use App\Http\Requests\DecideItSupportRequestApprovalRequest;
-use App\Http\Requests\StoreItSupportRequestCommentRequest;
 use App\Http\Requests\StoreItSupportRequestRequest;
 use App\Mail\ItSupportRequestReceived;
-use App\Models\ItSupportRequest;
-use App\Models\ItSupportRequestAttachment;
-use App\Models\ItSupportRequestComment;
+use App\Models\SupportRequest;
+use App\Models\RequestAttachment;
 use App\Models\RequestType;
 use App\Models\User;
 use App\Notifications\RequestAssigned;
@@ -41,46 +37,35 @@ class ItSupportRequestController extends Controller
 
     public function index(): View
     {
-        $this->authorize('viewAny', ItSupportRequest::class);
+        $this->authorize('viewAny', SupportRequest::class);
 
         return view('it-support-requests.index');
     }
 
     public function manage(): View
     {
-        Gate::authorize('manageAssignments', ItSupportRequest::class);
+        Gate::authorize('manageAssignments', SupportRequest::class);
 
         return view('it-support-requests.manage');
     }
 
-    public function approvals(): RedirectResponse|View
-    {
-        Gate::authorize('viewApprovalQueue', ItSupportRequest::class);
-
-        if (Gate::allows('viewAdminDashboard', ItSupportRequest::class)) {
-            return redirect()->route('edp.it-support-requests.index', ['tab' => 'pending_approval']);
-        }
-
-        return view('it-support-requests.approvals');
-    }
-
     public function assigned(): View
     {
-        Gate::authorize(Gate::allows('viewAssignedQueue', ItSupportRequest::class) ? 'viewAssignedQueue' : 'viewAssigned', ItSupportRequest::class);
+        Gate::authorize(Gate::allows('viewAssignedQueue', SupportRequest::class) ? 'viewAssignedQueue' : 'viewAssigned', SupportRequest::class);
 
         return view('it-support-requests.assigned');
     }
 
     public function assign(
         AssignItSupportRequestRequest $request,
-        ItSupportRequest $itSupportRequest,
+        SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
         $validated = $request->validated();
         $technicianId = $validated['technician_id'];
 
         [$technician, $requester] = DB::transaction(function () use ($itSupportRequest, $technicianId, $request, $auditLogger, $validated) {
-            $lockedRequest = ItSupportRequest::query()
+            $lockedRequest = SupportRequest::query()
                 ->whereKey($itSupportRequest->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -93,7 +78,7 @@ class ItSupportRequestController extends Controller
             $technician = User::technicians()->findOrFail($technicianId);
             $lockedRequest->technician()->associate($technician);
             $lockedRequest->assigned_at = now();
-            if (in_array($fromStatus, [ItSupportRequestStatus::Submitted, ItSupportRequestStatus::Approved], true)) {
+            if ($fromStatus === ItSupportRequestStatus::Submitted) {
                 $lockedRequest->status = ItSupportRequestStatus::Assigned;
             }
             if (isset($validated['priority'])) {
@@ -137,7 +122,7 @@ class ItSupportRequestController extends Controller
 
     public function updatePriority(
         Request $request,
-        ItSupportRequest $itSupportRequest,
+        SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
         $validated = $request->validate([
@@ -145,12 +130,12 @@ class ItSupportRequestController extends Controller
         ]);
 
         DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): void {
-            $lockedRequest = ItSupportRequest::query()
+            $lockedRequest = SupportRequest::query()
                 ->whereKey($itSupportRequest->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            Gate::authorize('manageAssignments', ItSupportRequest::class);
+            Gate::authorize('manageAssignments', SupportRequest::class);
 
             $oldPriority = $lockedRequest->priority;
             $newPriority = ItSupportRequestPriority::from($validated['priority']);
@@ -174,82 +159,31 @@ class ItSupportRequestController extends Controller
         return back()->with('status', "Priority updated for ticket {$itSupportRequest->ticket_no}.");
     }
 
-    public function decideApproval(
-        DecideItSupportRequestApprovalRequest $request,
-        ItSupportRequest $itSupportRequest,
-        ItSupportRequestAuditLogger $auditLogger,
-    ): RedirectResponse {
-        $decision = ApprovalDecision::from($request->validated('decision'));
-        $user = $request->user();
-
-        if ((string) $itSupportRequest->requester_user_id === (string) $user->getKey()) {
-            $auditLogger->record(
-                $itSupportRequest,
-                $user,
-                'approval_blocked_self',
-                $itSupportRequest->status,
-                $itSupportRequest->status,
-                'Blocked self-submission decision attempt: '.$decision->value.'.',
-            );
-
-            Gate::authorize('approve', $itSupportRequest);
-        }
-
-        DB::transaction(function () use ($itSupportRequest, $decision, $request, $user, $auditLogger) {
-            $lockedRequest = ItSupportRequest::query()
-                ->whereKey($itSupportRequest->getKey())
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            Gate::authorize('approve', $lockedRequest);
-
-            $fromStatus = $lockedRequest->status;
-            $lockedRequest->approvals()->create([
-                'approver_user_id' => $user->getKey(),
-                'approver_name' => $user->full_name,
-                'approver_role' => $user->role->value,
-                'decision' => $decision,
-                'comment' => $request->validated('comment'),
-                'decided_at' => now(),
-            ]);
-            $lockedRequest->status = $decision === ApprovalDecision::Approved
-                ? ItSupportRequestStatus::Approved
-                : ItSupportRequestStatus::Rejected;
-            $lockedRequest->save();
-            $auditLogger->record(
-                $lockedRequest,
-                $user,
-                'approval_decision',
-                $fromStatus,
-                $lockedRequest->status,
-                trim($decision->value.': '.(string) $request->validated('comment')),
-            );
-        });
-
-        return redirect()->route('it-support-requests.show', $itSupportRequest);
-    }
-
-    public function show(ItSupportRequest $itSupportRequest): View
+    public function show(SupportRequest $itSupportRequest): View
     {
         $this->authorize('view', $itSupportRequest);
-        $canViewInternalNotes = Gate::allows('viewInternalNotes', $itSupportRequest);
         $cancellationReason = $itSupportRequest->status === ItSupportRequestStatus::Cancelled
             ? $itSupportRequest->logs()->where('action', 'cancelled')->latest('created_at')->value('remarks')
             : null;
         $itSupportRequest->load([
-            'comments' => fn ($query) => $query
-                ->when(! $canViewInternalNotes, fn ($comments) => $comments->where('is_internal', false))
-                ->with('author'),
-            'detailsRows',
             'attachments',
             'resolver',
             'technician',
-            'approvals',
+            'requestType',
         ]);
+        $definition = collect(config('request_forms.request_types'))
+            ->firstWhere('key', $itSupportRequest->requestType?->key);
+        $answerFields = collect($definition['fields'] ?? [])
+            ->map(fn (array $field): array => [
+                'label' => $field['label'],
+                'value' => $itSupportRequest->answers[$field['key']] ?? null,
+            ])
+            ->filter(fn (array $field): bool => filled($field['value']))
+            ->values();
 
         $privateDisk = Storage::disk('private');
         $attachments = $itSupportRequest->attachments
-            ->map(function (ItSupportRequestAttachment $attachment) use ($itSupportRequest, $privateDisk): array {
+            ->map(function (RequestAttachment $attachment) use ($itSupportRequest, $privateDisk): array {
                 $mimeType = $privateDisk->exists($attachment->file_path)
                     ? ($privateDisk->mimeType($attachment->file_path) ?: $attachment->mime_type)
                     : $attachment->mime_type;
@@ -266,19 +200,19 @@ class ItSupportRequestController extends Controller
 
         return view('it-support-requests.show', [
             'supportRequest' => $itSupportRequest,
-            'canViewInternalNotes' => $canViewInternalNotes,
             'attachments' => $attachments,
             'cancellationReason' => $cancellationReason,
+            'answerFields' => $answerFields,
         ]);
     }
 
     public function startWork(
         Request $request,
-        ItSupportRequest $itSupportRequest,
+        SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
         return DB::transaction(function () use ($request, $itSupportRequest, $auditLogger): RedirectResponse {
-            $lockedRequest = ItSupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
+            $lockedRequest = SupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
             $this->authorize('startWork', $lockedRequest);
             $fromStatus = $lockedRequest->status;
 
@@ -293,15 +227,20 @@ class ItSupportRequestController extends Controller
 
     public function resolve(
         Request $request,
-        ItSupportRequest $itSupportRequest,
+        SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
-        return DB::transaction(function () use ($request, $itSupportRequest, $auditLogger): RedirectResponse {
-            $lockedRequest = ItSupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
+        $validated = $request->validate([
+            'resolution_notes' => ['required', 'string', 'max:5000'],
+        ]);
+
+        return DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): RedirectResponse {
+            $lockedRequest = SupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
             $this->authorize('resolve', $lockedRequest);
             $fromStatus = $lockedRequest->status;
 
             $lockedRequest->status = ItSupportRequestStatus::Resolved;
+            $lockedRequest->resolution_notes = $validated['resolution_notes'];
             $lockedRequest->resolved_by_user_id = $request->user()->getKey();
             $lockedRequest->resolved_at = now();
             $lockedRequest->save();
@@ -311,13 +250,69 @@ class ItSupportRequestController extends Controller
         });
     }
 
+    public function hold(
+        Request $request,
+        SupportRequest $itSupportRequest,
+        ItSupportRequestAuditLogger $auditLogger,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+
+        return DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): RedirectResponse {
+            $lockedRequest = SupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
+            $this->authorize('hold', $lockedRequest);
+            $fromStatus = $lockedRequest->status;
+            $lockedRequest->status = ItSupportRequestStatus::OnHold;
+            $lockedRequest->save();
+            $auditLogger->record(
+                $lockedRequest,
+                $request->user(),
+                'put_on_hold',
+                $fromStatus,
+                $lockedRequest->status,
+                $validated['reason'],
+            );
+
+            return redirect()->route('it-support-requests.show', $lockedRequest);
+        });
+    }
+
+    public function resume(
+        Request $request,
+        SupportRequest $itSupportRequest,
+        ItSupportRequestAuditLogger $auditLogger,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+
+        return DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): RedirectResponse {
+            $lockedRequest = SupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
+            $this->authorize('resume', $lockedRequest);
+            $fromStatus = $lockedRequest->status;
+            $lockedRequest->status = ItSupportRequestStatus::InProgress;
+            $lockedRequest->save();
+            $auditLogger->record(
+                $lockedRequest,
+                $request->user(),
+                'resumed',
+                $fromStatus,
+                $lockedRequest->status,
+                $validated['reason'],
+            );
+
+            return redirect()->route('it-support-requests.show', $lockedRequest);
+        });
+    }
+
     public function confirmCompletion(
         Request $request,
-        ItSupportRequest $itSupportRequest,
+        SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
         return DB::transaction(function () use ($request, $itSupportRequest, $auditLogger): RedirectResponse {
-            $lockedRequest = ItSupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
+            $lockedRequest = SupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
             $this->authorize('confirmCompletion', $lockedRequest);
             $fromStatus = $lockedRequest->status;
 
@@ -333,7 +328,7 @@ class ItSupportRequestController extends Controller
 
     public function cancel(
         Request $request,
-        ItSupportRequest $itSupportRequest,
+        SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse|JsonResponse {
         $validated = $request->validate([
@@ -341,7 +336,7 @@ class ItSupportRequestController extends Controller
         ]);
 
         DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): void {
-            $lockedRequest = ItSupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
+            $lockedRequest = SupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
             $this->authorize('cancel', $lockedRequest);
             $fromStatus = $lockedRequest->status;
             $lockedRequest->status = ItSupportRequestStatus::Cancelled;
@@ -368,7 +363,7 @@ class ItSupportRequestController extends Controller
 
     public function reopen(
         Request $request,
-        ItSupportRequest $itSupportRequest,
+        SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
         $validated = $request->validate([
@@ -376,7 +371,7 @@ class ItSupportRequestController extends Controller
         ]);
 
         return DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): RedirectResponse {
-            $lockedRequest = ItSupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
+            $lockedRequest = SupportRequest::query()->whereKey($itSupportRequest->getKey())->lockForUpdate()->firstOrFail();
             $this->authorize('reopen', $lockedRequest);
             $fromStatus = $lockedRequest->status;
             $lockedRequest->status = ItSupportRequestStatus::Assigned;
@@ -385,6 +380,7 @@ class ItSupportRequestController extends Controller
             $lockedRequest->resolved_at = null;
             $lockedRequest->resolved_by_user_id = null;
             $lockedRequest->started_at = null;
+            $lockedRequest->resolution_notes = null;
             $lockedRequest->save();
             $auditLogger->record(
                 $lockedRequest,
@@ -399,59 +395,43 @@ class ItSupportRequestController extends Controller
         });
     }
 
-    public function storeComment(
-        StoreItSupportRequestCommentRequest $request,
-        ItSupportRequest $itSupportRequest,
+    public function storeProofAttachment(
+        Request $request,
+        SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
         $user = $request->user();
-        $proofPath = null;
+        $request->validate([
+            'proof' => ['required', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
+        ]);
+        $this->authorize('addProof', $itSupportRequest);
+        $proofPath = $request->file('proof')->store('it-support-requests/proofs', 'private');
+
+        if ($proofPath === false) {
+            throw new RuntimeException('The proof photo could not be stored.');
+        }
 
         try {
-            $comment = DB::transaction(function () use ($request, $itSupportRequest, $user, $auditLogger, &$proofPath) {
-                if ($request->hasFile('proof')) {
-                    $proofPath = $request->file('proof')->store('it-support-requests/proofs', 'private');
-
-                    if ($proofPath === false) {
-                        throw new RuntimeException('The proof document could not be stored.');
-                    }
-                }
-
-                $comment = $itSupportRequest->comments()->create([
-                    'user_id' => $user->getKey(),
-                    'author_name' => $user->full_name,
-                    'body' => $request->validated('body'),
-                    'proof_path' => $proofPath,
-                    'is_internal' => $request->boolean('is_internal'),
+            DB::transaction(function () use ($itSupportRequest, $user, $auditLogger, $request, $proofPath): void {
+                $file = $request->file('proof');
+                $attachment = $itSupportRequest->attachments()->create([
+                    'uploaded_by' => $user->getKey(),
+                    'file_path' => $proofPath,
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime_type' => $file->getMimeType(),
+                    'size' => $file->getSize(),
                 ]);
-
-                $isInternal = $comment->is_internal;
                 $auditLogger->record(
                     $itSupportRequest,
                     $user,
-                    $isInternal ? 'internal_note_added' : 'comment_added',
+                    'attachment_uploaded',
                     $itSupportRequest->status,
                     $itSupportRequest->status,
-                    Str::limit($comment->body, 500),
+                    "Uploaded proof photo #{$attachment->getKey()}: {$attachment->original_name}",
                 );
-
-                if ($proofPath) {
-                    $auditLogger->record(
-                        $itSupportRequest,
-                        $user,
-                        'attachment_uploaded',
-                        $itSupportRequest->status,
-                        $itSupportRequest->status,
-                        'Discussion proof uploaded: '.basename($proofPath),
-                    );
-                }
-
-                return $comment;
             });
         } catch (Throwable $exception) {
-            if (is_string($proofPath)) {
-                Storage::disk('private')->delete($proofPath);
-            }
+            Storage::disk('private')->delete($proofPath);
 
             throw $exception;
         }
@@ -459,21 +439,21 @@ class ItSupportRequestController extends Controller
         return redirect()->route('it-support-requests.show', $itSupportRequest);
     }
 
-    public function downloadAttachment(ItSupportRequest $itSupportRequest): RedirectResponse
+    public function downloadAttachment(SupportRequest $itSupportRequest): RedirectResponse
     {
         $this->authorize('view', $itSupportRequest);
 
-        $attachment = $itSupportRequest->attachments()->oldest('id')->firstOrFail();
+        $attachment = $itSupportRequest->attachments()->oldest('attachments_id')->firstOrFail();
 
         return redirect()->route('it-support-requests.attachments.download', [$itSupportRequest, $attachment]);
     }
 
     public function downloadRequestAttachment(
-        ItSupportRequest $itSupportRequest,
-        ItSupportRequestAttachment $attachment,
+        SupportRequest $itSupportRequest,
+        RequestAttachment $attachment,
     ): StreamedResponse {
         $this->authorize('view', $itSupportRequest);
-        abort_unless((string) $attachment->it_support_request_id === (string) $itSupportRequest->getKey(), 404);
+        abort_unless((string) $attachment->requests_id === (string) $itSupportRequest->getKey(), 404);
         $disk = Storage::disk('private');
         abort_unless($disk->exists($attachment->file_path), 404);
         $mimeType = $disk->mimeType($attachment->file_path) ?: $attachment->mime_type;
@@ -501,28 +481,6 @@ class ItSupportRequestController extends Controller
         ], true);
     }
 
-    public function downloadProof(
-        ItSupportRequest $itSupportRequest,
-        ItSupportRequestComment $comment,
-    ): StreamedResponse {
-        $this->authorize('view', $itSupportRequest);
-
-        abort_unless($comment->it_support_request_id === $itSupportRequest->getKey(), 404);
-        abort_if(
-            $comment->is_internal && ! Gate::allows('viewInternalNotes', $itSupportRequest),
-            404,
-        );
-        abort_unless($comment->proof_path, 404);
-        abort_unless(Storage::disk('private')->exists($comment->proof_path), 404);
-
-        $extension = pathinfo($comment->proof_path, PATHINFO_EXTENSION);
-
-        return Storage::disk('private')->download(
-            $comment->proof_path,
-            "it-support-request-{$itSupportRequest->getKey()}-proof-{$comment->getKey()}.{$extension}",
-        );
-    }
-
     public function store(
         StoreItSupportRequestRequest $request,
         ItSupportRequestAuditLogger $auditLogger,
@@ -530,38 +488,22 @@ class ItSupportRequestController extends Controller
         $user = $request->user();
         $requestType = RequestType::active()->findOrFail($request->validated('request_type_id'));
         $storedPaths = [];
-        $fieldDefinition = collect(config('request_forms.request_types'))
-            ->firstWhere('key', $requestType->key);
-        abort_unless($fieldDefinition, 500, 'Request type field configuration is missing.');
-
         try {
-            $supportRequest = DB::transaction(function () use ($request, $user, $requestType, $fieldDefinition, $auditLogger, &$storedPaths) {
-                $status = $requestType->requires_approval
-                    ? ItSupportRequestStatus::PendingApproval
-                    : ItSupportRequestStatus::Submitted;
+            $supportRequest = DB::transaction(function () use ($request, $user, $requestType, $auditLogger, &$storedPaths) {
+                $status = ItSupportRequestStatus::Submitted;
                 $supportRequest = $user->itSupportRequests()->create([
-                    'request_type_id' => $requestType->getKey(),
+                    'request_types_id' => $requestType->getKey(),
                     'priority' => $request->validated('priority'),
                     'summary' => $request->validated('summary'),
+                    'answers' => $request->validated('answers'),
                     'requester_name' => $user->full_name,
                     'division' => $user->division->value,
                     'support_type' => $requestType->name,
                     'follow_up_question' => $requestType->follow_up_question,
-                    'details' => null,
                     'requested_at' => now(),
                     'certified_at' => now(),
                     'status' => $status,
-                    'requires_approval' => $requestType->requires_approval,
-                    'approval_roles' => $requestType->approval_roles,
                 ]);
-
-                foreach ($fieldDefinition['fields'] as $field) {
-                    $supportRequest->detailsRows()->create([
-                        'field_key' => $field['key'],
-                        'field_label' => $field['label'],
-                        'field_value' => $request->validated("answers.{$field['key']}"),
-                    ]);
-                }
 
                 $auditLogger->record(
                     $supportRequest,

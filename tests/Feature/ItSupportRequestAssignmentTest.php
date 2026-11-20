@@ -5,7 +5,7 @@ use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
 use App\Enums\Role;
 use App\Enums\UserStatus;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -19,9 +19,9 @@ it('shows every request and eligible technicians in the administrator intake que
         'last_name' => 'Technician',
         'division' => Division::EDP,
     ]);
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create([
         'summary' => 'Printer support request',
-        'details' => 'Printer is not responding.',
+        'answers' => ['details' => 'Printer is not responding.'],
     ]);
 
     $this->actingAs($administrator)
@@ -45,7 +45,7 @@ it('allows an administrator to assign an active EDP technician and marks the req
         'status' => UserStatus::Active,
         'is_active' => true,
     ]);
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
 
     $this->actingAs($administrator)
         ->patch(route('edp.it-support-requests.assign', $supportRequest), [
@@ -68,7 +68,7 @@ it('logs reassignment from the previous technician', function () {
     $requester = User::factory()->create();
     $firstTechnician = User::factory()->create(['division' => Division::EDP]);
     $secondTechnician = User::factory()->create(['division' => Division::EDP]);
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create([
         'assigned_technician_id' => $firstTechnician->user_id,
         'status' => ItSupportRequestStatus::Assigned,
     ]);
@@ -92,7 +92,7 @@ it('saves assignment and priority together and preserves in-progress and on-hold
     $requester = User::factory()->create();
     $firstTechnician = User::factory()->create(['division' => Division::EDP]);
     $secondTechnician = User::factory()->create(['division' => Division::EDP]);
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create([
         'assigned_technician_id' => $firstTechnician->user_id,
         'status' => $status,
         'priority' => ItSupportRequestPriority::Normal,
@@ -121,11 +121,11 @@ it('saves assignment and priority together and preserves in-progress and on-hold
     'on hold' => [ItSupportRequestStatus::OnHold],
 ]);
 
-it('does not allow pending-approval or rejected requests to be assigned', function (ItSupportRequestStatus $status) {
+it('does not allow resolved or cancelled requests to be assigned', function (ItSupportRequestStatus $status) {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $requester = User::factory()->create();
     $technician = User::factory()->create(['division' => Division::EDP]);
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create([
         'status' => $status,
     ]);
 
@@ -138,15 +138,15 @@ it('does not allow pending-approval or rejected requests to be assigned', functi
     expect($supportRequest->fresh()->assigned_technician_id)->toBeNull()
         ->and($supportRequest->fresh()->status)->toBe($status);
 })->with([
-    'pending approval' => [ItSupportRequestStatus::PendingApproval],
-    'rejected' => [ItSupportRequestStatus::Rejected],
+    'resolved' => [ItSupportRequestStatus::Resolved],
+    'cancelled' => [ItSupportRequestStatus::Cancelled],
 ]);
 
 it('rejects assignment to users outside the active EDP technician scope', function (array $technicianAttributes) {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $requester = User::factory()->create();
     $technician = User::factory()->create($technicianAttributes);
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
 
     $this->actingAs($administrator)
         ->patch(route('edp.it-support-requests.assign', $supportRequest), [
@@ -165,7 +165,7 @@ it('rejects assignment to users outside the active EDP technician scope', functi
 it('allows the assigned technician to view the request', function () {
     $requester = User::factory()->create();
     $technician = User::factory()->create(['division' => Division::EDP]);
-    $supportRequest = ItSupportRequest::factory()
+    $supportRequest = SupportRequest::factory()
         ->for($requester, 'requester')
         ->create(['assigned_technician_id' => $technician->user_id]);
 
@@ -186,7 +186,7 @@ it('denies non-administrators permission to assign requests', function () {
     $employee = User::factory()->create(['role' => Role::Staff]);
     $requester = User::factory()->create();
     $technician = User::factory()->create(['division' => Division::EDP]);
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
 
     $this->actingAs($employee)
         ->patch(route('edp.it-support-requests.assign', $supportRequest), [

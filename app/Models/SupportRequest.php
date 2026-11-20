@@ -4,7 +4,7 @@ namespace App\Models;
 
 use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
-use Database\Factories\ItSupportRequestFactory;
+use Database\Factories\SupportRequestFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,21 +12,25 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
-class ItSupportRequest extends Model
+class SupportRequest extends Model
 {
-    /** @use HasFactory<ItSupportRequestFactory> */
+    /** @use HasFactory<SupportRequestFactory> */
     use HasFactory;
+
+    protected $table = 'support_requests';
+
+    protected $primaryKey = 'requests_id';
 
     protected $fillable = [
         'priority',
         'summary',
-        'details',
+        'answers',
         'requested_at',
         'closed_at',
         'resolution_notes',
         'requester_confirmed_at',
         'requester_user_id',
-        'request_type_id',
+        'request_types_id',
         'assigned_technician_id',
         'requester_name',
         'division',
@@ -39,8 +43,6 @@ class ItSupportRequest extends Model
         'resolved_by_user_id',
         'resolved_at',
         'completed_at',
-        'requires_approval',
-        'approval_roles',
     ];
 
     protected function casts(): array
@@ -56,8 +58,7 @@ class ItSupportRequest extends Model
             'completed_at' => 'datetime',
             'closed_at' => 'datetime',
             'requester_confirmed_at' => 'datetime',
-            'requires_approval' => 'boolean',
-            'approval_roles' => 'array',
+            'answers' => 'array',
         ];
     }
 
@@ -88,14 +89,14 @@ class ItSupportRequest extends Model
                 throw new RuntimeException("Unable to acquire the ticket-number sequence lock for {$year}.");
             }
         } else {
-            ItSupportRequest::query()
+            SupportRequest::query()
                 ->where('ticket_no', 'like', "EDP-{$year}-%")
                 ->orderByDesc('ticket_no')
                 ->lockForUpdate()
-                ->first(['id']);
+                ->first(['requests_id']);
         }
 
-        $latestTicket = DB::table('it_support_requests')
+        $latestTicket = DB::table('support_requests')
             ->where('ticket_no', 'like', "EDP-{$year}-%")
             ->orderByDesc('ticket_no')
             ->value('ticket_no');
@@ -115,7 +116,7 @@ class ItSupportRequest extends Model
 
     public function requestType(): BelongsTo
     {
-        return $this->belongsTo(RequestType::class);
+        return $this->belongsTo(RequestType::class, 'request_types_id', 'request_types_id');
     }
 
     public function technician(): BelongsTo
@@ -128,28 +129,13 @@ class ItSupportRequest extends Model
         return $this->belongsTo(User::class, 'resolved_by_user_id', 'user_id');
     }
 
-    public function comments(): HasMany
-    {
-        return $this->hasMany(ItSupportRequestComment::class)->oldest();
-    }
-
-    public function approvals(): HasMany
-    {
-        return $this->hasMany(ItSupportRequestApproval::class)->oldest();
-    }
-
-    public function detailsRows(): HasMany
-    {
-        return $this->hasMany(ItSupportRequestDetail::class);
-    }
-
     public function attachments(): HasMany
     {
-        return $this->hasMany(ItSupportRequestAttachment::class);
+        return $this->hasMany(RequestAttachment::class, 'requests_id', 'requests_id');
     }
 
     public function logs(): HasMany
     {
-        return $this->hasMany(ItSupportRequestLog::class)->oldest();
+        return $this->hasMany(RequestLog::class, 'requests_id', 'requests_id')->oldest();
     }
 }

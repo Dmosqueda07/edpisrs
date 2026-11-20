@@ -2,8 +2,8 @@
 
 use App\Enums\Role;
 use App\Enums\UserStatus;
-use App\Models\ItSupportRequest;
-use App\Models\ItSupportRequestLog;
+use App\Models\SupportRequest;
+use App\Models\RequestLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -36,11 +36,11 @@ it('shows the accounts tab only to super administrators', function () {
 it('lists request log entries newest first', function () {
     $admin = activityLogUser(Role::Administrator);
     $requester = User::factory()->create();
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create();
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
     $olderActor = User::factory()->create(['first_name' => 'Older', 'last_name' => 'Actor']);
     $newerActor = User::factory()->create(['first_name' => 'Newer', 'last_name' => 'Actor']);
-    ItSupportRequestLog::factory()->create(['it_support_request_id' => $supportRequest->id, 'user_id' => $olderActor->user_id, 'action' => 'assigned', 'created_at' => '2026-06-01 10:00:00']);
-    ItSupportRequestLog::factory()->create(['it_support_request_id' => $supportRequest->id, 'user_id' => $newerActor->user_id, 'action' => 'resolved', 'created_at' => '2026-06-02 10:00:00']);
+    RequestLog::factory()->create(['requests_id' => $supportRequest->getKey(), 'user_id' => $olderActor->user_id, 'action' => 'assigned', 'created_at' => '2026-06-01 10:00:00']);
+    RequestLog::factory()->create(['requests_id' => $supportRequest->getKey(), 'user_id' => $newerActor->user_id, 'action' => 'resolved', 'created_at' => '2026-06-02 10:00:00']);
 
     $this->actingAs($admin)->get(route('activity-logs.index'))
         ->assertOk()->assertSeeInOrder(['Newer Actor', 'Marked as resolved', 'Older Actor', 'Assigned the request']);
@@ -49,18 +49,18 @@ it('lists request log entries newest first', function () {
 it('filters request activity by ticket or person, date range, and action while retaining filters in pagination', function () {
     $admin = activityLogUser(Role::Administrator);
     $requester = User::factory()->create();
-    $ticketMatch = ItSupportRequest::factory()->for($requester, 'requester')->create(['ticket_no' => 'EDP-2026-11111']);
-    $ticketOther = ItSupportRequest::factory()->for($requester, 'requester')->create(['ticket_no' => 'EDP-2026-22222']);
+    $ticketMatch = SupportRequest::factory()->for($requester, 'requester')->create(['ticket_no' => 'EDP-2026-11111']);
+    $ticketOther = SupportRequest::factory()->for($requester, 'requester')->create(['ticket_no' => 'EDP-2026-22222']);
     $actor = User::factory()->create(['first_name' => 'Filterable', 'last_name' => 'Person']);
-    ItSupportRequestLog::factory()->create(['it_support_request_id' => $ticketMatch->id, 'user_id' => $actor->user_id, 'action' => 'resolved', 'created_at' => '2026-06-15 10:00:00']);
+    RequestLog::factory()->create(['requests_id' => $ticketMatch->getKey(), 'user_id' => $actor->user_id, 'action' => 'resolved', 'created_at' => '2026-06-15 10:00:00']);
     foreach (range(1, 25) as $minute) {
-        ItSupportRequestLog::factory()->create([
-            'it_support_request_id' => $ticketMatch->id, 'user_id' => $actor->user_id, 'action' => 'resolved',
+        RequestLog::factory()->create([
+            'requests_id' => $ticketMatch->getKey(), 'user_id' => $actor->user_id, 'action' => 'resolved',
             'created_at' => sprintf('2026-06-15 11:%02d:00', $minute - 1),
         ]);
     }
-    ItSupportRequestLog::factory()->create(['it_support_request_id' => $ticketOther->id, 'user_id' => $actor->user_id, 'action' => 'assigned', 'created_at' => '2026-06-15 10:00:00']);
-    ItSupportRequestLog::factory()->create(['it_support_request_id' => $ticketMatch->id, 'user_id' => $actor->user_id, 'action' => 'resolved', 'created_at' => '2026-07-01 00:00:00']);
+    RequestLog::factory()->create(['requests_id' => $ticketOther->getKey(), 'user_id' => $actor->user_id, 'action' => 'assigned', 'created_at' => '2026-06-15 10:00:00']);
+    RequestLog::factory()->create(['requests_id' => $ticketMatch->getKey(), 'user_id' => $actor->user_id, 'action' => 'resolved', 'created_at' => '2026-07-01 00:00:00']);
 
     $this->actingAs($admin)->get(route('activity-logs.index', [
         'search' => 'EDP-2026-11111', 'start' => '2026-06-01', 'end' => '2026-06-30', 'action' => 'resolved',

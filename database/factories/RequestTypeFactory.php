@@ -23,8 +23,6 @@ class RequestTypeFactory extends Factory
             'category' => null,
             'remote_allowed' => false,
             'follow_up_question' => 'Additional details',
-            'requires_approval' => false,
-            'approval_roles' => [],
             'sort_order' => 1,
             'is_active' => true,
         ];

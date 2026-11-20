@@ -3,13 +3,13 @@
 namespace App\Services;
 
 use App\Enums\ItSupportRequestStatus;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Models\User;
 
 class ItSupportRequestAuditLogger
 {
     public function record(
-        ItSupportRequest $request,
+        SupportRequest $request,
         ?User $actor,
         string $action,
         ?ItSupportRequestStatus $fromStatus = null,

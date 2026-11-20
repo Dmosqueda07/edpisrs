@@ -2,7 +2,7 @@
 
 use App\Enums\ItSupportRequestStatus;
 use App\Enums\Role;
-use App\Models\ItSupportRequest;
+use App\Models\SupportRequest;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -10,9 +10,9 @@ use Illuminate\Support\Facades\Gate;
 
 uses(RefreshDatabase::class);
 
-it('allows a requester to cancel submitted or pending approval requests and audits each cancellation', function (ItSupportRequestStatus $status) {
+it('allows a requester to cancel submitted requests and audits each cancellation', function (ItSupportRequestStatus $status) {
     $requester = User::factory()->create();
-    $supportRequest = ItSupportRequest::factory()
+    $supportRequest = SupportRequest::factory()
         ->for($requester, 'requester')
         ->create(['status' => $status]);
 
@@ -28,15 +28,12 @@ it('allows a requester to cancel submitted or pending approval requests and audi
         ->assertOk()
         ->assertSee('Cancellation reason')
         ->assertSee('No longer needed.');
-})->with([
-    'submitted' => [ItSupportRequestStatus::Submitted],
-    'pending approval' => [ItSupportRequestStatus::PendingApproval],
-]);
+})->with(['submitted' => [ItSupportRequestStatus::Submitted]]);
 
 it('allows an administrator to cancel an unresolved request and denies cancellation by another requester', function () {
     $owner = User::factory()->create();
     $otherUser = User::factory()->create();
-    $supportRequest = ItSupportRequest::factory()
+    $supportRequest = SupportRequest::factory()
         ->for($owner, 'requester')
         ->create(['status' => ItSupportRequestStatus::InProgress]);
 
@@ -55,7 +52,7 @@ it('allows an administrator to cancel an unresolved request and denies cancellat
 
 it('returns a cancellation success response to the modal and limits the optional reason to 300 characters', function () {
     $requester = User::factory()->create();
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create([
         'status' => ItSupportRequestStatus::Submitted,
     ]);
 
@@ -66,7 +63,7 @@ it('returns a cancellation success response to the modal and limits the optional
         ->assertJsonPath('status', 'cancelled')
         ->assertJsonPath('message', "Request {$supportRequest->ticket_no} was cancelled.");
 
-    $anotherRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $anotherRequest = SupportRequest::factory()->for($requester, 'requester')->create([
         'status' => ItSupportRequestStatus::Submitted,
     ]);
 
@@ -80,7 +77,7 @@ it('returns a cancellation success response to the modal and limits the optional
 
 it('keeps the cancellation action available when the database returns the requester id as a string', function () {
     $requester = User::factory()->create(['role' => Role::Staff]);
-    $supportRequest = ItSupportRequest::factory()
+    $supportRequest = SupportRequest::factory()
         ->for($requester, 'requester')
         ->create(['status' => ItSupportRequestStatus::Submitted]);
     $supportRequest->setAttribute('requester_user_id', (string) $requester->getKey());
@@ -90,7 +87,7 @@ it('keeps the cancellation action available when the database returns the reques
 
 it('does not allow cancellation after resolution or repeated cancellation', function () {
     $requester = User::factory()->create();
-    $supportRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+    $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create([
         'status' => ItSupportRequestStatus::Resolved,
         'resolved_at' => now(),
     ]);
@@ -110,7 +107,7 @@ it('allows the requester to reopen a resolved request within three days with a r
     try {
         $requester = User::factory()->create();
         $technician = User::factory()->create();
-        $supportRequest = ItSupportRequest::factory()
+        $supportRequest = SupportRequest::factory()
             ->for($requester, 'requester')
             ->create([
                 'assigned_technician_id' => $technician->user_id,
@@ -141,12 +138,12 @@ it('requires a reopen reason and denies other users or requests outside three da
         $requester = User::factory()->create();
         $otherUser = User::factory()->create();
         $technician = User::factory()->create();
-        $recentRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+        $recentRequest = SupportRequest::factory()->for($requester, 'requester')->create([
             'assigned_technician_id' => $technician->user_id,
             'status' => ItSupportRequestStatus::Resolved,
             'resolved_at' => now()->subDay(),
         ]);
-        $expiredRequest = ItSupportRequest::factory()->for($requester, 'requester')->create([
+        $expiredRequest = SupportRequest::factory()->for($requester, 'requester')->create([
             'assigned_technician_id' => $technician->user_id,
             'status' => ItSupportRequestStatus::Resolved,
             'resolved_at' => now()->subDays(3)->subSecond(),
