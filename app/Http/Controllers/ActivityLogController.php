@@ -11,9 +11,8 @@ use Illuminate\View\View;
 class ActivityLogController extends Controller
 {
     private const ACTIONS = [
-        'assigned' => 'Assigned the request',
-        'reassigned' => 'Reassigned the request',
-        'priority_changed' => 'Changed the priority',
+        'claimed' => 'Claimed the request',
+        'released' => 'Released the request to the queue',
         'work_started' => 'Started work',
         'put_on_hold' => 'Put the request on hold',
         'resumed' => 'Resumed work',
@@ -65,6 +64,7 @@ class ActivityLogController extends Controller
         }
 
         $actions = self::ACTIONS;
+
         return view('activity-logs.index', compact('tab', 'filters', 'logs', 'actions'));
     }
 

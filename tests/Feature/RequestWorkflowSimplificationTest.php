@@ -18,7 +18,6 @@ beforeEach(function () {
 
 it('submits formerly sensitive request types directly to the assignment queue', function () {
     $requester = User::factory()->create(['division' => Division::PVSD]);
-    $administrator = User::factory()->create(['role' => Role::Administrator]);
     $technician = User::factory()->create(['division' => Division::EDP]);
     $requestType = RequestType::where('key', 'extract-database-records')->firstOrFail();
 
@@ -39,10 +38,8 @@ it('submits formerly sensitive request types directly to the assignment queue', 
         ->and($supportRequest->assigned_technician_id)->toBeNull()
         ->and($supportRequest->logs()->where('action', 'submitted')->exists())->toBeTrue();
 
-    $this->actingAs($administrator)
-        ->patch(route('edp.it-support-requests.assign', $supportRequest), [
-            'technician_id' => $technician->getKey(),
-        ])
+    $this->actingAs($technician)
+        ->patch(route('edp.it-support-requests.claim', $supportRequest))
         ->assertRedirect(route('edp.it-support-requests.index'));
 
     expect($supportRequest->fresh()->status)->toBe(ItSupportRequestStatus::Assigned)

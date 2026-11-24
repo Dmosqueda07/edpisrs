@@ -8,12 +8,6 @@
         'cancelled' => 'bg-red-100 text-red-800',
         default => 'bg-gray-100 text-gray-700',
     };
-    $priorityColor = match ($supportRequest->priority->value) {
-        'urgent' => 'bg-red-100 text-red-800',
-        'high' => 'bg-amber-100 text-amber-800',
-        'low' => 'bg-gray-100 text-gray-700',
-        default => 'bg-blue-100 text-blue-800',
-    };
 @endphp
 <x-app-layout>
     <x-slot name="header">
@@ -23,17 +17,19 @@
             </div>
             <div class="flex shrink-0 flex-wrap gap-2">
                 <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $statusColor }}">{{ \Illuminate\Support\Str::headline($supportRequest->status->value) }}</span>
-                <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $priorityColor }}">{{ \Illuminate\Support\Str::headline($supportRequest->priority->value) }}</span>
             </div>
         </div>
     </x-slot>
 
     <div class="py-12">
         <div class="max-w-4xl mx-auto sm:px-6 lg:px-8 space-y-6">
-            <div id="request-detail-metadata" class="hidden" data-ticket="{{ $supportRequest->ticket_no ?? '#'.$supportRequest->getKey() }}" data-summary="{{ $displayTitle }}" data-type="{{ $supportRequest->support_type }}" data-status="{{ \Illuminate\Support\Str::headline($supportRequest->status->value) }}" data-status-class="{{ $statusColor }}" data-priority="{{ \Illuminate\Support\Str::headline($supportRequest->priority->value) }}" data-priority-class="{{ $priorityColor }}"></div>
+            <div id="request-detail-metadata" class="hidden" data-ticket="{{ $supportRequest->ticket_no ?? '#'.$supportRequest->getKey() }}" data-summary="{{ $displayTitle }}" data-type="{{ $supportRequest->support_type }}" data-status="{{ \Illuminate\Support\Str::headline($supportRequest->status->value) }}" data-status-class="{{ $statusColor }}"></div>
             <div id="request-modal-content" class="space-y-6">
             @if (session('status'))
                 <div class="rounded-md bg-green-50 p-4 text-sm text-green-800" role="status">{{ session('status') }}</div>
+            @endif
+            @if (session('error'))
+                <div class="rounded-md bg-red-50 p-4 text-sm text-red-800" role="alert">{{ session('error') }}</div>
             @endif
             @if ($cancellationReason)
                 <div class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="status">
@@ -50,10 +46,6 @@
                     <div>
                         <dt class="text-sm font-medium text-gray-500">Status</dt>
                         <dd class="mt-1"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $statusColor }}">{{ \Illuminate\Support\Str::headline($supportRequest->status->value) }}</span></dd>
-                    </div>
-                    <div>
-                        <dt class="text-sm font-medium text-gray-500">Priority</dt>
-                        <dd class="mt-1"><span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $priorityColor }}">{{ \Illuminate\Support\Str::headline($supportRequest->priority->value) }}</span></dd>
                     </div>
                     <div>
                         <dt class="text-sm font-medium text-gray-500">Requester</dt>
@@ -155,6 +147,29 @@
                     on {{ $supportRequest->resolved_at->toDayDateTimeString() }}.
                 </div>
             @endif
+
+            @can('claim', $supportRequest)
+                <form data-request-footer-action method="POST" action="{{ route('edp.it-support-requests.claim', $supportRequest) }}">
+                    @csrf
+                    @method('PATCH')
+                    <button type="submit" class="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">
+                        Claim
+                    </button>
+                </form>
+            @endcan
+
+            @can('release', $supportRequest)
+                <form data-request-footer-action method="POST" action="{{ route('edp.it-support-requests.release', $supportRequest) }}" class="space-y-2">
+                    @csrf
+                    @method('PATCH')
+                    <label for="release-reason" class="block text-sm font-medium text-gray-700">Reason for releasing this request</label>
+                    <textarea id="release-reason" name="reason" rows="2" required maxlength="2000" class="block w-full rounded-md border-gray-300 shadow-sm">{{ old('reason') }}</textarea>
+                    @error('reason') <p class="text-sm text-red-600">{{ $message }}</p> @enderror
+                    <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50">
+                        Release to queue
+                    </button>
+                </form>
+            @endcan
 
             @if ($supportRequest->started_at)
                 <p class="text-sm text-gray-600">Work started {{ $supportRequest->started_at->toDayDateTimeString() }}.</p>

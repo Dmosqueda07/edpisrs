@@ -34,7 +34,8 @@ class MyItSupportRequests extends Component
         return view('livewire.my-it-support-requests', [
             'requests' => $user->itSupportRequests()
                 ->when($this->status !== '', fn ($query) => $query->where('status', $this->status))
-                ->latest()
+                ->orderByRaw('COALESCE(requested_at, created_at) ASC')
+                ->orderBy('requests_id')
                 ->paginate(10)
                 ->withQueryString(),
         ]);

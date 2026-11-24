@@ -1,26 +1,23 @@
 <?php
 
 use App\Enums\Division;
-use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
 use App\Enums\Role;
 use App\Livewire\AssignedItSupportRequests;
 use App\Livewire\ManageItSupportRequests;
 use App\Livewire\MyItSupportRequests;
-use App\Models\SupportRequest;
 use App\Models\RequestLog;
 use App\Models\RequestType;
+use App\Models\SupportRequest;
 use App\Models\User;
-use App\Notifications\RequestAssigned;
-use App\Services\RequestOverdueQuery;
-use App\Services\RequestDashboardMetrics;
 use App\Services\ItSupportRequestAuditLogger;
+use App\Services\RequestDashboardMetrics;
+use App\Services\RequestOverdueQuery;
 use App\Support\WorkingDayCalculator;
 use Carbon\CarbonImmutable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -64,7 +61,7 @@ it('shows administrator card counts from one grouped status aggregate query', fu
         ->assertSee('New requests (7 days)')
         ->assertSee('data-dashboard-card="new-requests-7-days"', false)
         ->assertDontSee('data-dashboard-card="pending-approval"', false)
-        ->assertSee('data-dashboard-card="awaiting-assignment"', false)
+        ->assertSee('data-dashboard-card="available-to-claim"', false)
         ->assertSee('tab=submitted&amp;recent=7d', false);
 
     expect($queries)->toHaveCount(1);
@@ -81,19 +78,15 @@ it('defaults the intake queue to Submitted and counts filtered statuses in one g
     $requester = User::factory()->create();
     $submitted = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Submitted,
-        'priority' => ItSupportRequestPriority::Urgent,
     ]);
     $assigned = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Assigned,
-        'priority' => ItSupportRequestPriority::Urgent,
     ]);
     makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Assigned,
-        'priority' => ItSupportRequestPriority::Normal,
     ]);
     $cancelled = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Cancelled,
-        'priority' => ItSupportRequestPriority::Urgent,
     ]);
 
     $statusCountQueries = [];
@@ -105,7 +98,6 @@ it('defaults the intake queue to Submitted and counts filtered statuses in one g
     });
 
     Livewire::actingAs($administrator)
-        ->withQueryParams(['priority' => ItSupportRequestPriority::Urgent->value])
         ->test(ManageItSupportRequests::class)
         ->assertSet('status', ItSupportRequestStatus::Submitted->value)
         ->assertSeeInOrder([
@@ -116,9 +108,9 @@ it('defaults the intake queue to Submitted and counts filtered statuses in one g
         ->assertSee($submitted->ticket_no)
         ->assertDontSee($assigned->ticket_no)
         ->assertSee('data-status-tab="submitted" data-status-count="1"', false)
-        ->assertSee('data-status-tab="assigned" data-status-count="1"', false)
+        ->assertSee('data-status-tab="assigned" data-status-count="2"', false)
         ->assertSee('data-status-tab="cancelled" data-status-count="1"', false)
-        ->assertSee('data-status-tab="all" data-status-count="3"', false);
+        ->assertSee('data-status-tab="all" data-status-count="4"', false);
 
     expect($statusCountQueries)->toHaveCount(1);
 });
@@ -137,7 +129,7 @@ it('uses only the explicit tab query parameter and keeps Submitted as the defaul
         ->assertSet('status', ItSupportRequestStatus::Assigned->value);
 });
 
-it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dashboard counts', function () {
+it('shows exact seven-day, available-to-claim, resolved-today, and overdue dashboard counts', function () {
     CarbonImmutable::setTestNow('2026-10-09 10:00:00');
     $administrator = User::factory()->create(['role' => Role::SuperAdministrator]);
     $requester = User::factory()->create();
@@ -164,14 +156,11 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
     ]);
     $overdue = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Assigned,
+        'requested_at' => now()->subDays(4),
     ]);
-    DB::table('support_requests')->where('requests_id', $overdue->getKey())
-        ->update(['updated_at' => now()->subDays(4)]);
     $active = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::InProgress,
     ]);
-    DB::table('support_requests')->where('requests_id', $active->getKey())
-        ->update(['updated_at' => now()->subHours(4)]);
     makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::OnHold]);
 
     $response = $this->actingAs($administrator)
@@ -185,18 +174,18 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
     $html = $response->getContent();
     $expectedCards = [
         'New requests (7 days)' => 1,
-        'Awaiting assignment' => 2,
+        'Available to claim' => 2,
         'In progress' => 1,
         'On hold' => 1,
         'Resolved today' => 2,
-        'Overdue' => 1,
+        'Overdue' => 3,
     ];
     $actualCards = collect(app(RequestDashboardMetrics::class)->administratorDashboard($administrator)['overview'])
         ->pluck('count', 'label');
     expect($actualCards->all())->toMatchArray($expectedCards);
 
     foreach (array_keys($expectedCards) as $label) {
-        expect($html)->toContain('data-dashboard-card="'.\Illuminate\Support\Str::slug($label).'"');
+        expect($html)->toContain('data-dashboard-card="'.Str::slug($label).'"');
     }
 
     Livewire::actingAs($administrator)
@@ -206,7 +195,7 @@ it('shows exact seven-day, awaiting-assignment, resolved-today, and overdue dash
         ->assertDontSee($oldSubmitted->ticket_no);
 
     Livewire::actingAs($administrator)
-        ->withQueryParams(['awaiting_assignment' => '1'])
+        ->withQueryParams(['awaiting_claim' => '1'])
         ->test(ManageItSupportRequests::class)
         ->set('status', '')
         ->assertSee($recentSubmitted->ticket_no)
@@ -237,6 +226,7 @@ it('counts overdue activity using working days across weekends', function () {
 
     $fridayActivity = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::Assigned,
+        'requested_at' => '2026-10-09 09:00:00',
     ]);
     $fridayActivity->logs()->create([
         'action' => 'activity',
@@ -245,6 +235,7 @@ it('counts overdue activity using working days across weekends', function () {
 
     $thursdayActivity = makeDashboardRequest($requester, [
         'status' => ItSupportRequestStatus::OnHold,
+        'requested_at' => '2026-10-08 09:00:00',
     ]);
     $thursdayActivity->logs()->create([
         'action' => 'activity',
@@ -418,13 +409,15 @@ it('shows the saved actor name for new dashboard activity and labels null actors
         ->assertDontSee('Unknown user');
 });
 
-it('forbids non-administrators from viewing the request management queue', function () {
-    $employee = User::factory()->create(['role' => Role::Staff]);
+it('allows active EDP technicians and administrators to view the intake queue', function () {
+    $technician = User::factory()->create(['role' => Role::Staff, 'division' => Division::EDP]);
+    $employee = User::factory()->create(['role' => Role::Staff, 'division' => Division::CA]);
 
+    $this->actingAs($technician)->get(route('edp.it-support-requests.index'))->assertOk();
     $this->actingAs($employee)->get(route('edp.it-support-requests.index'))->assertForbidden();
 });
 
-it('filters the queue by status, type, division, priority, and technician including unassigned', function () {
+it('filters the queue by status, type, division, and technician including unassigned', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $requester = User::factory()->create(['first_name' => 'Queue', 'last_name' => 'Requester']);
     $technician = User::factory()->create(['division' => Division::EDP]);
@@ -432,7 +425,6 @@ it('filters the queue by status, type, division, priority, and technician includ
     $match = makeDashboardRequest($requester, [
         'request_types_id' => $type->getKey(),
         'division' => Division::EDP,
-        'priority' => ItSupportRequestPriority::Urgent,
         'status' => ItSupportRequestStatus::Assigned,
         'assigned_technician_id' => $technician->getKey(),
     ]);
@@ -457,12 +449,6 @@ it('filters the queue by status, type, division, priority, and technician includ
         ->assertDontSee($unassigned->ticket_no);
     Livewire::actingAs($administrator)->test(ManageItSupportRequests::class)
         ->set('status', '')
-        ->set('priority', ItSupportRequestPriority::Urgent->value)
-        ->assertSee($match->ticket_no)
-        ->assertDontSee($unassigned->ticket_no);
-
-    Livewire::actingAs($administrator)->test(ManageItSupportRequests::class)
-        ->set('status', '')
         ->set('technician', (string) $technician->getKey())
         ->assertSee($match->ticket_no)
         ->assertDontSee($unassigned->ticket_no);
@@ -472,92 +458,6 @@ it('filters the queue by status, type, division, priority, and technician includ
         ->set('technician', 'unassigned')
         ->assertSee($unassigned->ticket_no)
         ->assertDontSee($match->ticket_no);
-});
-
-it('opens a compact assignment panel with technician workload and priority', function () {
-    $administrator = User::factory()->create(['role' => Role::Administrator]);
-    $requester = User::factory()->create();
-    $technician = User::factory()->create([
-        'first_name' => 'Panel',
-        'last_name' => 'Technician',
-        'division' => Division::EDP,
-    ]);
-    makeDashboardRequest($requester, [
-        'assigned_technician_id' => $technician->getKey(),
-        'status' => ItSupportRequestStatus::Assigned,
-    ]);
-    $submitted = makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::Submitted,
-        'priority' => ItSupportRequestPriority::Normal,
-    ]);
-
-    Livewire::actingAs($administrator)
-        ->test(ManageItSupportRequests::class)
-        ->assertSee('Assign')
-        ->call('openAssignment', $submitted->getKey())
-        ->assertSee('Panel Technician · 1 open')
-        ->assertSee('Save')
-        ->assertSee('name="technician_id"', false)
-        ->assertSee('name="priority"', false)
-        ->assertSee(route('edp.it-support-requests.assign', $submitted), false)
-        ->assertSee('value="normal" selected', false);
-});
-
-it('shows assignment actions only on their matching status tabs and hides stale panels on tab changes', function () {
-    $administrator = User::factory()->create(['role' => Role::Administrator]);
-    $requester = User::factory()->create();
-    $technician = User::factory()->create(['division' => Division::EDP]);
-    $submitted = makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Submitted]);
-    $assigned = makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::Assigned,
-        'assigned_technician_id' => $technician->getKey(),
-    ]);
-    $inProgress = makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::InProgress,
-        'assigned_technician_id' => $technician->getKey(),
-    ]);
-    $onHold = makeDashboardRequest($requester, [
-        'status' => ItSupportRequestStatus::OnHold,
-        'assigned_technician_id' => $technician->getKey(),
-    ]);
-    foreach ([
-        ItSupportRequestStatus::Resolved,
-        ItSupportRequestStatus::Cancelled,
-    ] as $status) {
-        makeDashboardRequest($requester, ['status' => $status]);
-    }
-    makeDashboardRequest($requester, ['status' => ItSupportRequestStatus::Closed]);
-
-    $component = Livewire::actingAs($administrator)
-        ->test(ManageItSupportRequests::class)
-        ->assertSee('Assign')
-        ->assertDontSee('Reassign')
-        ->call('openAssignment', $submitted->getKey())
-        ->assertSee('assignment-panel-'.$submitted->getKey(), false)
-        ->set('status', '')
-        ->assertDontSee('data-queue-action=', false)
-        ->assertDontSee('assignment-panel-'.$submitted->getKey(), false)
-        ->set('status', ItSupportRequestStatus::Submitted->value)
-        ->assertSee('data-queue-action="assign"', false)
-        ->assertDontSee('data-queue-action="reassign"', false)
-        ->set('status', ItSupportRequestStatus::Assigned->value)
-        ->assertSee('data-queue-action="reassign"', false)
-        ->assertDontSee('data-queue-action="assign"', false)
-        ->set('status', ItSupportRequestStatus::InProgress->value)
-        ->assertSee('data-queue-action="reassign"', false)
-        ->set('status', ItSupportRequestStatus::OnHold->value)
-        ->assertSee('data-queue-action="reassign"', false)
-        ->set('status', ItSupportRequestStatus::Closed->value)
-        ->assertDontSee('data-queue-action=', false)
-        ->set('status', ItSupportRequestStatus::Resolved->value)
-        ->assertDontSee('data-queue-action=', false)
-        ->set('status', ItSupportRequestStatus::Cancelled->value)
-        ->assertDontSee('data-queue-action=', false);
-
-    expect($component->get('assignmentRequestId'))->toBeNull()
-        ->and($assigned->exists)->toBeTrue()
-        ->and($inProgress->exists)->toBeTrue()
-        ->and($onHold->exists)->toBeTrue();
 });
 
 it('always includes request type requester and division in secondary metadata when title falls back to type', function () {
@@ -583,36 +483,31 @@ it('always includes request type requester and division in secondary metadata wh
         ]);
 });
 
-it('sorts assigned tickets by explicit priority order and then oldest first', function () {
+it('orders assigned tickets oldest first', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $requester = User::factory()->create();
-    $createAssigned = function (ItSupportRequestPriority $priority, string $requestedAt) use ($administrator, $requester) {
+    $createAssigned = function (string $requestedAt) use ($administrator, $requester) {
         return makeDashboardRequest($requester, [
             'assigned_technician_id' => $administrator->getKey(),
-            'priority' => $priority,
             'requested_at' => $requestedAt,
             'status' => ItSupportRequestStatus::Assigned,
         ]);
     };
 
-    $high = $createAssigned(ItSupportRequestPriority::High, '2026-10-01 09:00:00');
-    $urgentNew = $createAssigned(ItSupportRequestPriority::Urgent, '2026-10-05 09:00:00');
-    $normal = $createAssigned(ItSupportRequestPriority::Normal, '2026-09-30 09:00:00');
-    $urgentOld = $createAssigned(ItSupportRequestPriority::Urgent, '2026-09-20 09:00:00');
-    $low = $createAssigned(ItSupportRequestPriority::Low, '2026-09-01 09:00:00');
+    $newest = $createAssigned('2026-10-05 09:00:00');
+    $older = $createAssigned('2026-10-01 09:00:00');
+    $oldest = $createAssigned('2026-09-20 09:00:00');
 
     Livewire::actingAs($administrator)
         ->test(AssignedItSupportRequests::class)
         ->assertSeeInOrder([
-            $urgentOld->ticket_no,
-            $urgentNew->ticket_no,
-            $high->ticket_no,
-            $normal->ticket_no,
-            $low->ticket_no,
+            $oldest->ticket_no,
+            $older->ticket_no,
+            $newest->ticket_no,
         ]);
 });
 
-it('marks assigned tickets overdue after two working days without activity', function () {
+it('marks assigned tickets overdue based on request age even after recent activity', function () {
     CarbonImmutable::setTestNow('2026-10-12 12:00:00');
     try {
         $administrator = User::factory()->create(['role' => Role::Administrator]);
@@ -620,9 +515,10 @@ it('marks assigned tickets overdue after two working days without activity', fun
         $overdue = makeDashboardRequest($requester, [
             'assigned_technician_id' => $administrator->getKey(),
             'status' => ItSupportRequestStatus::Assigned,
+            'requested_at' => '2026-10-07 11:00:00',
         ]);
         DB::table('support_requests')->where('requests_id', $overdue->getKey())->update([
-            'updated_at' => '2026-10-07 11:00:00',
+            'updated_at' => '2026-10-12 11:00:00',
         ]);
 
         Livewire::actingAs($administrator)
@@ -683,7 +579,7 @@ it('filters the queue by requested date range and searches ticket number and req
         ->assertSee($outOfRange->ticket_no);
 });
 
-it('displays technician workloads from one grouped count query', function () {
+it('shows technician filter options without exposing workload counts', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $requester = User::factory()->create();
     $technician = User::factory()->create([
@@ -692,34 +588,13 @@ it('displays technician workloads from one grouped count query', function () {
         'division' => Division::EDP,
     ]);
 
-    foreach ([
-        ItSupportRequestStatus::Assigned,
-        ItSupportRequestStatus::InProgress,
-        ItSupportRequestStatus::OnHold,
-    ] as $status) {
-        makeDashboardRequest($requester, [
-            'assigned_technician_id' => $technician->getKey(),
-            'status' => $status,
-        ]);
-    }
-    makeDashboardRequest($requester, [
-        'assigned_technician_id' => $technician->getKey(),
-        'status' => ItSupportRequestStatus::Resolved,
-    ]);
-
-    $component = Livewire::actingAs($administrator)->test(ManageItSupportRequests::class);
-
-    $workloadQueries = [];
-    DB::listen(function ($query) use (&$workloadQueries): void {
-        if (str_contains(strtolower($query->sql), 'group by "assigned_technician_id"')) {
-            $workloadQueries[] = $query->sql;
-        }
-    });
-
-    $component->call('toggleFilters')
-        ->assertSee('Workload Technician (3 open)');
-
-    expect($workloadQueries)->toHaveCount(1);
+    $component = Livewire::actingAs($administrator)
+        ->test(ManageItSupportRequests::class)
+        ->call('toggleFilters')
+        ->assertSee('Workload Technician')
+        ->assertDontSee('open)</option>')
+        ->assertDontSee('Priority');
+    expect($technician->exists)->toBeTrue();
 });
 
 it('keeps active queue filters in the URL and pagination links', function () {
@@ -731,7 +606,6 @@ it('keeps active queue filters in the URL and pagination links', function () {
         makeDashboardRequest($requester, [
             'request_types_id' => $type->getKey(),
             'status' => ItSupportRequestStatus::Submitted,
-            'priority' => ItSupportRequestPriority::Urgent,
         ]);
     }
 
@@ -739,7 +613,6 @@ it('keeps active queue filters in the URL and pagination links', function () {
         ->withQueryParams([
             'tab' => ItSupportRequestStatus::Submitted->value,
             'request_type' => (string) $type->getKey(),
-            'priority' => ItSupportRequestPriority::Urgent->value,
         ])
         ->test(ManageItSupportRequests::class)
         ->assertSee('wire:click="gotoPage(2', false)
@@ -753,63 +626,15 @@ it('keeps active queue filters in the URL and pagination links', function () {
         ->assertSee(SupportRequest::query()->orderBy('requests_id')->skip(20)->value('ticket_no'));
 });
 
-it('filters queue results by priority, resolves today, overdue, and preserves sorting filters in the URL', function () {
+it('orders the intake queue oldest first and removes priority filters and sorting', function () {
     $administrator = User::factory()->create(['role' => Role::Administrator]);
     $requester = User::factory()->create();
-    $urgent = makeDashboardRequest($requester, ['priority' => ItSupportRequestPriority::Urgent]);
-    $normal = makeDashboardRequest($requester, ['priority' => ItSupportRequestPriority::Normal]);
+    $newest = makeDashboardRequest($requester, ['requested_at' => '2026-10-10 09:00:00']);
+    $oldest = makeDashboardRequest($requester, ['requested_at' => '2026-10-01 09:00:00']);
 
     Livewire::actingAs($administrator)
         ->test(ManageItSupportRequests::class)
-        ->set('sort', 'priority')
-        ->assertSeeInOrder([$urgent->ticket_no, $normal->ticket_no])
-        ->assertSet('sort', 'priority');
-});
-
-it('notifies assigned technicians and requesters through the queue after assignment', function () {
-    Notification::fake();
-    $administrator = User::factory()->create(['role' => Role::Administrator]);
-    $requester = User::factory()->create();
-    $technician = User::factory()->create(['division' => Division::EDP]);
-    $supportRequest = makeDashboardRequest($requester, ['summary' => 'Printer jam on floor two']);
-
-    $this->actingAs($administrator)
-        ->patch(route('edp.it-support-requests.assign', $supportRequest), [
-            'technician_id' => $technician->getKey(),
-        ])
-        ->assertRedirect(route('edp.it-support-requests.index'));
-
-    Notification::assertSentTo($technician, RequestAssigned::class);
-    Notification::assertSentTo($requester, RequestAssigned::class);
-    $notification = new RequestAssigned($supportRequest->fresh());
-    $mail = $notification->toMail($technician);
-    expect($notification)->toBeInstanceOf(ShouldQueue::class)
-        ->and($mail->subject)->toContain('Printer jam on floor two')
-        ->and($mail->introLines)->toContain('Request: Printer jam on floor two');
-});
-
-it('logs administrator priority changes and rejects priority changes by other roles', function () {
-    $administrator = User::factory()->create(['role' => Role::Administrator]);
-    $employee = User::factory()->create(['role' => Role::Staff]);
-    $requester = User::factory()->create();
-    $supportRequest = makeDashboardRequest($requester, [
-        'priority' => ItSupportRequestPriority::Normal,
-    ]);
-
-    $this->actingAs($administrator)
-        ->patch(route('edp.it-support-requests.priority', $supportRequest), [
-            'priority' => ItSupportRequestPriority::Urgent->value,
-        ])
-        ->assertRedirect();
-
-    $log = $supportRequest->logs()->where('action', 'priority_changed')->firstOrFail();
-    expect($supportRequest->fresh()->priority)->toBe(ItSupportRequestPriority::Urgent)
-        ->and($log->user_id)->toBe($administrator->getKey())
-        ->and($log->remarks)->toContain('normal to urgent');
-
-    $this->actingAs($employee)
-        ->patch(route('edp.it-support-requests.priority', $supportRequest), [
-            'priority' => ItSupportRequestPriority::High->value,
-        ])
-        ->assertForbidden();
+        ->assertSeeInOrder([$oldest->ticket_no, $newest->ticket_no])
+        ->assertDontSee('Priority')
+        ->assertDontSee('sort');
 });

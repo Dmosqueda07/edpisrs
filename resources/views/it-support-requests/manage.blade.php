@@ -12,6 +12,11 @@
                     {{ session('status') }}
                 </div>
             @endif
+            @if (session('error'))
+                <div role="alert" class="rounded-md bg-red-50 p-4 text-sm text-red-800">
+                    {{ session('error') }}
+                </div>
+            @endif
 
             <livewire:manage-it-support-requests />
         </div>

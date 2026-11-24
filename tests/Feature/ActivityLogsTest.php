@@ -2,8 +2,8 @@
 
 use App\Enums\Role;
 use App\Enums\UserStatus;
-use App\Models\SupportRequest;
 use App\Models\RequestLog;
+use App\Models\SupportRequest;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -33,7 +33,7 @@ it('shows the accounts tab only to super administrators', function () {
         ->assertOk()->assertSee('Earlier actions remain in the daily audit log files');
 });
 
-it('lists request log entries newest first', function () {
+it('lists request log entries newest first and renders legacy assignment actions as plain text', function () {
     $admin = activityLogUser(Role::Administrator);
     $requester = User::factory()->create();
     $supportRequest = SupportRequest::factory()->for($requester, 'requester')->create();
@@ -43,7 +43,7 @@ it('lists request log entries newest first', function () {
     RequestLog::factory()->create(['requests_id' => $supportRequest->getKey(), 'user_id' => $newerActor->user_id, 'action' => 'resolved', 'created_at' => '2026-06-02 10:00:00']);
 
     $this->actingAs($admin)->get(route('activity-logs.index'))
-        ->assertOk()->assertSeeInOrder(['Newer Actor', 'Marked as resolved', 'Older Actor', 'Assigned the request']);
+        ->assertOk()->assertSeeInOrder(['Newer Actor', 'Marked as resolved', 'Older Actor', 'Recorded activity']);
 });
 
 it('filters request activity by ticket or person, date range, and action while retaining filters in pagination', function () {
@@ -68,8 +68,8 @@ it('filters request activity by ticket or person, date range, and action while r
         ->assertSee('search=EDP-2026-11111', false)->assertSee('action=resolved', false);
 
     $this->get(route('activity-logs.index', [
-        'search' => 'Filterable', 'start' => '2026-06-01', 'end' => '2026-06-30', 'action' => 'assigned',
-    ]))->assertOk()->assertSee('EDP-2026-22222')->assertDontSee('EDP-2026-11111');
+        'search' => 'EDP-2026-22222', 'start' => '2026-06-01', 'end' => '2026-06-30',
+    ]))->assertOk()->assertSee('EDP-2026-22222')->assertSee('Recorded activity');
 });
 
 it('shows a clear empty state when no request activity matches', function () {

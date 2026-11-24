@@ -1,12 +1,12 @@
 <?php
 
+use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\Auth\ForcedPasswordChangeController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ItSupportRequestController;
 use App\Http\Controllers\ProfileSignatureController;
-use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\ReportsController;
-use App\Http\Controllers\ActivityLogController;
-use App\Http\Controllers\Auth\ForcedPasswordChangeController;
+use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome');
@@ -51,10 +51,10 @@ Route::middleware(['auth', 'password.change'])->group(function () {
         ->name('edp.it-support-requests.index');
     Route::get('edp/assigned-requests', [ItSupportRequestController::class, 'assigned'])
         ->name('edp.assigned-requests.index');
-    Route::patch('edp/it-support-requests/{it_support_request}/assign', [ItSupportRequestController::class, 'assign'])
-        ->name('edp.it-support-requests.assign');
-    Route::patch('edp/it-support-requests/{it_support_request}/priority', [ItSupportRequestController::class, 'updatePriority'])
-        ->name('edp.it-support-requests.priority');
+    Route::patch('edp/it-support-requests/{it_support_request}/claim', [ItSupportRequestController::class, 'claim'])
+        ->name('edp.it-support-requests.claim');
+    Route::patch('edp/it-support-requests/{it_support_request}/release', [ItSupportRequestController::class, 'release'])
+        ->name('edp.it-support-requests.release');
 
     Route::resource('it-support-requests', ItSupportRequestController::class)
         ->only(['index', 'create', 'store', 'show']);

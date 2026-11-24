@@ -18,14 +18,14 @@ class SupportRequestPolicy
     public function view(User $user, SupportRequest $itSupportRequest): bool
     {
         return in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true)
+            || $this->isTechnician($user)
             || $this->sameUserId($itSupportRequest->requester_user_id, $user)
             || $this->sameUserId($itSupportRequest->assigned_technician_id, $user);
     }
 
-    public function manageAssignments(User $user): bool
+    public function viewIntake(User $user): bool
     {
-        return $this->isActive($user)
-            && in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true);
+        return $this->isAdministrator($user) || $this->isTechnician($user);
     }
 
     public function viewAdminDashboard(User $user): bool
@@ -43,11 +43,23 @@ class SupportRequestPolicy
         return User::technicians()->whereKey($user->getKey())->exists();
     }
 
-    public function assign(User $user, SupportRequest $itSupportRequest): bool
+    public function claimRequests(User $user): bool
     {
-        return $this->manageAssignments($user)
+        return $this->isTechnician($user);
+    }
+
+    public function claim(User $user, SupportRequest $itSupportRequest): bool
+    {
+        return $this->claimRequests($user)
+            && $itSupportRequest->status === ItSupportRequestStatus::Submitted
+            && $itSupportRequest->assigned_technician_id === null;
+    }
+
+    public function release(User $user, SupportRequest $itSupportRequest): bool
+    {
+        return ($this->isAdministrator($user) || $this->isAssignedTechnician($user, $itSupportRequest))
+            && $itSupportRequest->assigned_technician_id !== null
             && in_array($itSupportRequest->status, [
-                ItSupportRequestStatus::Submitted,
                 ItSupportRequestStatus::Assigned,
                 ItSupportRequestStatus::InProgress,
                 ItSupportRequestStatus::OnHold,
@@ -123,6 +135,18 @@ class SupportRequestPolicy
     {
         return $this->sameUserId($itSupportRequest->assigned_technician_id, $user)
             && User::technicians()->whereKey($user->getKey())->exists();
+    }
+
+    private function isTechnician(User $user): bool
+    {
+        return ! in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true)
+            && User::technicians()->whereKey($user->getKey())->exists();
+    }
+
+    private function isAdministrator(User $user): bool
+    {
+        return $this->isActive($user)
+            && in_array($user->role, [Role::Administrator, Role::SuperAdministrator], true);
     }
 
     private function sameUserId(int|string|null $userId, User $user): bool

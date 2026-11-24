@@ -3,8 +3,8 @@
 namespace Database\Factories;
 
 use App\Enums\ItSupportRequestStatus;
-use App\Models\SupportRequest;
 use App\Models\RequestType;
+use App\Models\SupportRequest;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -21,7 +21,6 @@ class SupportRequestFactory extends Factory
             'requester_user_id' => User::factory(),
             'request_types_id' => RequestType::factory(),
             'summary' => fake()->sentence(5),
-            'priority' => 'normal',
             'requester_name' => fake()->name(),
             'division' => 'CA',
             'support_type' => 'Other IT Request',

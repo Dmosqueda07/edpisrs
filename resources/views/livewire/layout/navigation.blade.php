@@ -16,7 +16,8 @@ new class extends Component
 }; ?>
 
 @php($badgeCounts = app(NavigationBadgeCounts::class)->for(auth()->user()))
-@php($administrator = auth()->user()->can('manageAssignments', SupportRequest::class))
+@php($administrator = auth()->user()->can('viewReports'))
+@php($showIntake = auth()->user()->can('viewIntake', SupportRequest::class))
 @php($showAssigned = auth()->user()->can('viewAssigned', SupportRequest::class) || auth()->user()->can('viewAssignedQueue', SupportRequest::class))
 
 <nav x-data="{ open: false }" x-on:keydown.escape.window="open = false" class="app-nav">

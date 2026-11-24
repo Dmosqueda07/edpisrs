@@ -18,4 +18,4 @@
     <dd>{{ $supportRequest->created_at->toDayDateTimeString() }}</dd>
 </dl>
 
-<p>For urgent concerns, coordinate directly with the EDP IT Support Team.</p>
+<p>For urgent concerns, please contact the EDP team directly.</p>

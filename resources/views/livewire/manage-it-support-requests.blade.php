@@ -44,12 +44,6 @@
                         <span class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">{{ $activeFilterCount }}</span>
                     @endif
                 </button>
-                <label for="queue-sort" class="sr-only">Sort requests</label>
-                <select id="queue-sort" wire:model.live="sort" class="rounded-md border-gray-300 py-2 text-sm shadow-sm focus:border-blue-600 focus:ring-blue-600">
-                    <option value="oldest">Oldest first</option>
-                    <option value="newest">Newest first</option>
-                    <option value="priority">Priority</option>
-                </select>
             </div>
         </div>
 
@@ -75,21 +69,12 @@
                         </select>
                     </div>
                     <div>
-                        <label for="queue-priority" class="block text-sm font-medium text-gray-700">Priority</label>
-                        <select id="queue-priority" wire:model.live="priority" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm">
-                            <option value="">All priorities</option>
-                            @foreach ($priorities as $priorityOption)
-                                <option value="{{ $priorityOption->value }}">{{ \Illuminate\Support\Str::headline($priorityOption->value) }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
                         <label for="queue-technician" class="block text-sm font-medium text-gray-700">Technician</label>
                         <select id="queue-technician" wire:model.live="technician" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm">
                             <option value="">All technicians</option>
                             <option value="unassigned">Unassigned</option>
                             @foreach ($technicians as $technicianOption)
-                                <option value="{{ $technicianOption->getKey() }}">{{ $technicianOption->full_name }} ({{ $technicianOption->open_workload }} open)</option>
+                                <option value="{{ $technicianOption->getKey() }}">{{ $technicianOption->full_name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -111,7 +96,7 @@
                     @endif
                 </div>
                 <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
-                    <p class="text-xs text-gray-500">Overdue means no activity for two working days.</p>
+                    <p class="text-xs text-gray-500">Overdue means the request is older than two working days.</p>
                     <div class="flex items-center gap-3">
                         @if ($activeFilterCount > 0 || $search !== '')
                             <button type="button" wire:click="clearFilters" class="text-sm font-medium text-blue-700 hover:text-blue-900">Clear filters</button>
@@ -135,7 +120,6 @@
                     <tr>
                         <th scope="col" class="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Ticket</th>
                         <th scope="col" class="min-w-64 px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Request</th>
-                        <th scope="col" class="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Priority</th>
                         <th scope="col" class="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Technician</th>
                         <th scope="col" class="whitespace-nowrap px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Age</th>
                         <th scope="col" class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500"><span class="sr-only">Actions</span></th>
@@ -149,7 +133,7 @@
                                     \App\Enums\ItSupportRequestStatus::Assigned,
                                     \App\Enums\ItSupportRequestStatus::InProgress,
                                     \App\Enums\ItSupportRequestStatus::OnHold,
-                                ], true) && \Carbon\Carbon::parse($supportRequest->last_activity_at)->lt($overdueCutoff);
+                                ], true) && \Carbon\Carbon::parse($supportRequest->requested_at ?? $supportRequest->created_at)->lt($overdueCutoff);
                                 $requestTitle = filled($supportRequest->summary)
                                     ? $supportRequest->summary
                                     : $supportRequest->support_type;
@@ -166,17 +150,6 @@
                                         <span aria-hidden="true">·</span> {{ $supportRequest->division }}
                                     </span>
                                 </td>
-                                <td class="whitespace-nowrap px-5 py-4">
-                                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold
-                                        {{ match ($supportRequest->priority) {
-                                            \App\Enums\ItSupportRequestPriority::Urgent => 'bg-red-100 text-red-800',
-                                            \App\Enums\ItSupportRequestPriority::High => 'bg-orange-100 text-orange-800',
-                                            \App\Enums\ItSupportRequestPriority::Normal => 'bg-blue-100 text-blue-800',
-                                            default => 'bg-gray-100 text-gray-700',
-                                        } }}">
-                                        {{ \Illuminate\Support\Str::headline($supportRequest->priority->value) }}
-                                    </span>
-                                </td>
                                 <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700">{{ $supportRequest->technician?->full_name ?? 'Unassigned' }}</td>
                                 <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700">
                                     {{ $supportRequest->requested_at->diffForHumans() }}
@@ -185,69 +158,20 @@
                                     @endif
                                 </td>
                                 <td class="whitespace-nowrap px-5 py-4 text-right">
-                                    @can('assign', $supportRequest)
-                                        @if ($status === \App\Enums\ItSupportRequestStatus::Submitted->value && $supportRequest->status === \App\Enums\ItSupportRequestStatus::Submitted)
-                                            @if ($technicians->isEmpty())
-                                                <span class="text-xs text-gray-500">No active EDP technicians are available.</span>
-                                            @else
-                                                <button type="button" data-queue-action="assign" wire:click="openAssignment({{ $supportRequest->getKey() }})" class="rounded-md border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-800 hover:bg-blue-50">
-                                                    Assign
-                                                </button>
-                                            @endif
-                                        @elseif (in_array($status, [\App\Enums\ItSupportRequestStatus::Assigned->value, \App\Enums\ItSupportRequestStatus::InProgress->value, \App\Enums\ItSupportRequestStatus::OnHold->value], true) && $supportRequest->status->value === $status)
-                                            @if ($technicians->isEmpty())
-                                                <span class="text-xs text-gray-500">No active EDP technicians are available.</span>
-                                            @else
-                                                <button type="button" data-queue-action="reassign" wire:click="openAssignment({{ $supportRequest->getKey() }})" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                                                    Reassign
-                                                </button>
-                                            @endif
-                                        @endif
+                                    @can('claim', $supportRequest)
+                                        <form method="POST" action="{{ route('edp.it-support-requests.claim', $supportRequest) }}">
+                                            @csrf
+                                            @method('PATCH')
+                                            <button type="submit" class="rounded-md border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-800 hover:bg-blue-50">
+                                                Claim
+                                            </button>
+                                        </form>
                                     @endcan
                                 </td>
                             </tr>
-                            @if ($assignmentRequestId === $supportRequest->getKey()
-                                && $assignmentRequest
-                                && $status === $supportRequest->status->value
-                                && in_array($status, [
-                                    \App\Enums\ItSupportRequestStatus::Submitted->value,
-                                    \App\Enums\ItSupportRequestStatus::Assigned->value,
-                                    \App\Enums\ItSupportRequestStatus::InProgress->value,
-                                    \App\Enums\ItSupportRequestStatus::OnHold->value,
-                                ], true))
-                                <tr wire:key="assignment-panel-{{ $supportRequest->getKey() }}">
-                                    <td colspan="6" class="bg-blue-50/60 px-5 py-4">
-                                        <form method="POST" action="{{ route('edp.it-support-requests.assign', $supportRequest) }}" class="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
-                                            @csrf
-                                            @method('PATCH')
-                                            <div>
-                                                <label for="assignment-technician-{{ $supportRequest->getKey() }}" class="block text-xs font-semibold text-gray-700">Technician</label>
-                                                <select id="assignment-technician-{{ $supportRequest->getKey() }}" name="technician_id" wire:model="assignmentTechnician" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm">
-                                                    <option value="">Select technician</option>
-                                                    @foreach ($technicians as $technicianOption)
-                                                        <option value="{{ $technicianOption->getKey() }}" @selected($assignmentTechnician === (string) $technicianOption->getKey())>{{ $technicianOption->full_name }} · {{ $technicianOption->open_workload }} open</option>
-                                                    @endforeach
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label for="assignment-priority-{{ $supportRequest->getKey() }}" class="block text-xs font-semibold text-gray-700">Priority</label>
-                                                <select id="assignment-priority-{{ $supportRequest->getKey() }}" name="priority" wire:model="assignmentPriority" required class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm">
-                                                    @foreach ($priorities as $priorityOption)
-                                                        <option value="{{ $priorityOption->value }}" @selected($assignmentPriority === $priorityOption->value)>{{ \Illuminate\Support\Str::headline($priorityOption->value) }}</option>
-                                                    @endforeach
-                                                </select>
-                                            </div>
-                                            <button type="submit" class="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500">Save</button>
-                                            <button type="button" wire:click="closeAssignment" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-                                            @error('technician_id')<p class="text-xs text-red-700 sm:col-span-4">{{ $message }}</p>@enderror
-                                            @error('priority')<p class="text-xs text-red-700 sm:col-span-4">{{ $message }}</p>@enderror
-                                        </form>
-                                    </td>
-                                </tr>
-                            @endif
                     @empty
                         <tr>
-                            <td colspan="6" class="px-6 py-14 text-center">
+                            <td colspan="5" class="px-6 py-14 text-center">
                                 <p class="text-base font-medium text-gray-900">{{ $status === '' ? 'No requests to show.' : 'No requests in '.$currentStatusLabel.'.' }}</p>
                                 <p class="mt-1 text-sm text-gray-500">Try another status or adjust your filters.</p>
                             </td>
@@ -267,7 +191,6 @@
                         <h2 id="request-modal-ticket" class="truncate text-xl font-semibold text-gray-900">Request details</h2>
                         <div class="mt-2 flex flex-wrap gap-2">
                             <span id="request-modal-status" class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"></span>
-                            <span id="request-modal-priority" class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"></span>
                         </div>
                     </div>
                     <button type="button" id="request-modal-close" class="shrink-0 rounded-md border border-gray-300 p-2 text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Close request details">

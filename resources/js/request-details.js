@@ -20,7 +20,6 @@ const initializeRequestDetails = () => {
     const cancelButtons = document.getElementById('request-modal-cancel-buttons');
     const cancelKeepButton = document.getElementById('request-modal-cancel-keep');
     const footerLinks = document.getElementById('request-modal-footer-links');
-    const priority = document.getElementById('request-modal-priority');
     let activeRow = null;
     let preview = null;
     let previewTrigger = null;
@@ -113,7 +112,6 @@ const initializeRequestDetails = () => {
 
             ticket.textContent = metadata.dataset.ticket;
             setBadge(status, metadata.dataset.status, metadata.dataset.statusClass);
-            setBadge(priority, metadata.dataset.priority, metadata.dataset.priorityClass);
             const sourceCancelForm = content.querySelector('[data-request-cancel-form]');
             if (sourceCancelForm) {
                 sourceCancelForm.remove();

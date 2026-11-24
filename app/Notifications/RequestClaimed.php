@@ -9,7 +9,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Queue\SerializesModels;
 
-class RequestAssigned extends Notification implements ShouldQueue
+class RequestClaimed extends Notification implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
@@ -26,12 +26,10 @@ class RequestAssigned extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('IT support request assigned: '.($this->supportRequest->summary ?: $this->supportRequest->support_type))
-            ->greeting('An IT support request has been assigned.')
+            ->subject('Your IT support request is being handled: '.$this->supportRequest->ticket_no)
+            ->greeting('Your IT support request has been claimed.')
             ->line('Ticket: '.$this->supportRequest->ticket_no)
-            ->line('Request: '.($this->supportRequest->summary ?: $this->supportRequest->support_type))
-            ->line('Type: '.$this->supportRequest->support_type)
-            ->line('Assigned technician: '.$this->supportRequest->technician?->full_name)
+            ->line(($this->supportRequest->technician?->full_name ?? 'An EDP technician').' is handling your request.')
             ->action('View request', route('it-support-requests.show', $this->supportRequest));
     }
 }

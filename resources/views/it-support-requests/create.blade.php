@@ -11,8 +11,7 @@
                 <h1 class="text-xl font-semibold text-gray-900">Request EDP assistance</h1>
                 <p class="mt-2 text-sm text-gray-600">
                     Use this form for IT-related concerns, technical assistance, and system or application issues.
-                    A confirmation will be sent to your registered email. For urgent concerns, coordinate directly
-                    with the EDP IT Support Team.
+                    A confirmation will be sent to your registered email. For urgent concerns, please contact the EDP team directly.
                 </p>
             </div>
 

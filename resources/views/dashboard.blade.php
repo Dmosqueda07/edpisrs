@@ -59,10 +59,10 @@
                     <article class="flex min-h-40 flex-col rounded-lg border border-gray-200 border-t-2 border-t-blue-700 bg-white p-5 shadow-sm">
                         <h3 class="font-semibold text-[#122643]">EDP intake</h3>
                         <div class="mt-3 grid grid-cols-2 gap-4 text-sm text-gray-600">
-                            <p><strong class="text-xl text-gray-900">{{ $shortcuts['intake']['awaiting'] }}</strong><span class="mt-1 block">Awaiting assignment</span></p>
+                            <p><strong class="text-xl text-gray-900">{{ $shortcuts['intake']['awaiting'] }}</strong><span class="mt-1 block">Available to claim</span></p>
                             <p><strong class="text-xl text-gray-900">{{ $shortcuts['intake']['overdue'] }}</strong><span class="mt-1 block">Overdue</span></p>
                         </div>
-                        @if ($shortcuts['intake']['awaiting'] === 0)<p class="mt-2 text-xs text-gray-500">No requests awaiting assignment</p>@endif
+                        @if ($shortcuts['intake']['awaiting'] === 0)<p class="mt-2 text-xs text-gray-500">No requests available to claim</p>@endif
                         @if ($shortcuts['intake']['overdue'] > 0)<span class="mt-2 w-fit rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">{{ $shortcuts['intake']['overdue'] }} need attention: overdue</span>@else<p class="mt-2 text-xs text-gray-500">No overdue requests</p>@endif
                         <a href="{{ $shortcuts['intake']['url'] }}" wire:navigate class="mt-auto pt-4 text-sm font-semibold text-blue-800 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">Open EDP intake <span aria-hidden="true">→</span></a>
                     </article>

@@ -2,16 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
-use App\Http\Requests\AssignItSupportRequestRequest;
 use App\Http\Requests\StoreItSupportRequestRequest;
 use App\Mail\ItSupportRequestReceived;
-use App\Models\SupportRequest;
 use App\Models\RequestAttachment;
 use App\Models\RequestType;
-use App\Models\User;
-use App\Notifications\RequestAssigned;
+use App\Models\SupportRequest;
+use App\Notifications\RequestClaimed;
 use App\Services\ItSupportRequestAuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -19,10 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -44,7 +38,7 @@ class ItSupportRequestController extends Controller
 
     public function manage(): View
     {
-        Gate::authorize('manageAssignments', SupportRequest::class);
+        Gate::authorize('viewIntake', SupportRequest::class);
 
         return view('it-support-requests.manage');
     }
@@ -56,77 +50,69 @@ class ItSupportRequestController extends Controller
         return view('it-support-requests.assigned');
     }
 
-    public function assign(
-        AssignItSupportRequestRequest $request,
+    public function claim(
+        Request $request,
         SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
-        $validated = $request->validated();
-        $technicianId = $validated['technician_id'];
+        Gate::authorize('claimRequests', SupportRequest::class);
 
-        [$technician, $requester] = DB::transaction(function () use ($itSupportRequest, $technicianId, $request, $auditLogger, $validated) {
-            $lockedRequest = SupportRequest::query()
+        $claimedRequest = DB::transaction(function () use ($itSupportRequest, $request, $auditLogger) {
+            $claimedAt = now();
+            $claimed = SupportRequest::query()
                 ->whereKey($itSupportRequest->getKey())
-                ->lockForUpdate()
-                ->firstOrFail();
+                ->where('status', ItSupportRequestStatus::Submitted->value)
+                ->whereNull('assigned_technician_id')
+                ->update([
+                    'assigned_technician_id' => $request->user()->getKey(),
+                    'assigned_at' => $claimedAt,
+                    'status' => ItSupportRequestStatus::Assigned->value,
+                    'updated_at' => $claimedAt,
+                ]);
 
-            Gate::authorize('assign', $lockedRequest);
+            if ($claimed !== 1) {
+                return null;
+            }
 
-            $fromStatus = $lockedRequest->status;
-            $previousTechnicianId = $lockedRequest->assigned_technician_id;
-            $oldPriority = $lockedRequest->priority;
-            $technician = User::technicians()->findOrFail($technicianId);
-            $lockedRequest->technician()->associate($technician);
-            $lockedRequest->assigned_at = now();
-            if ($fromStatus === ItSupportRequestStatus::Submitted) {
-                $lockedRequest->status = ItSupportRequestStatus::Assigned;
-            }
-            if (isset($validated['priority'])) {
-                $lockedRequest->priority = ItSupportRequestPriority::from($validated['priority']);
-            }
-            $lockedRequest->save();
+            $claimedRequest = SupportRequest::query()
+                ->with(['requester', 'technician'])
+                ->findOrFail($itSupportRequest->getKey());
             $auditLogger->record(
-                $lockedRequest,
+                $claimedRequest,
                 $request->user(),
-                $previousTechnicianId ? 'reassigned' : 'assigned',
-                $fromStatus,
-                $lockedRequest->status,
-                $previousTechnicianId
-                    ? "Reassigned from technician user #{$previousTechnicianId} to {$technician->full_name}."
-                    : "Assigned to {$technician->full_name}.",
+                'claimed',
+                ItSupportRequestStatus::Submitted,
+                ItSupportRequestStatus::Assigned,
+                "Claimed by {$request->user()->full_name}.",
             );
 
-            if ($oldPriority !== $lockedRequest->priority) {
-                $auditLogger->record(
-                    $lockedRequest,
-                    $request->user(),
-                    'priority_changed',
-                    $lockedRequest->status,
-                    $lockedRequest->status,
-                    "Priority changed from {$oldPriority->value} to {$lockedRequest->priority->value}.",
-                );
-            }
-
-            return [$technician, $lockedRequest->requester()->firstOrFail()];
+            return $claimedRequest;
         });
 
-        Notification::send(
-            collect([$technician, $requester])->unique(fn (User $recipient) => $recipient->getKey()),
-            new RequestAssigned($itSupportRequest->fresh(['requestType', 'technician', 'requester'])),
-        );
+        if (! $claimedRequest) {
+            $currentRequest = $itSupportRequest->fresh('technician');
+
+            if ($currentRequest?->technician) {
+                return back()->with('error', "Already claimed by {$currentRequest->technician->full_name}");
+            }
+
+            return back()->with('error', 'This request is no longer available to claim.');
+        }
+
+        $claimedRequest->requester()->firstOrFail()->notify(new RequestClaimed($claimedRequest));
 
         return redirect()
             ->route('edp.it-support-requests.index')
-            ->with('status', "Ticket {$itSupportRequest->ticket_no} assigned to {$technician->full_name}.");
+            ->with('status', "Ticket {$claimedRequest->ticket_no} claimed.");
     }
 
-    public function updatePriority(
+    public function release(
         Request $request,
         SupportRequest $itSupportRequest,
         ItSupportRequestAuditLogger $auditLogger,
     ): RedirectResponse {
         $validated = $request->validate([
-            'priority' => ['required', Rule::enum(ItSupportRequestPriority::class)],
+            'reason' => ['required', 'string', 'max:2000'],
         ]);
 
         DB::transaction(function () use ($request, $itSupportRequest, $auditLogger, $validated): void {
@@ -134,29 +120,24 @@ class ItSupportRequestController extends Controller
                 ->whereKey($itSupportRequest->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
-
-            Gate::authorize('manageAssignments', SupportRequest::class);
-
-            $oldPriority = $lockedRequest->priority;
-            $newPriority = ItSupportRequestPriority::from($validated['priority']);
-
-            if ($oldPriority === $newPriority) {
-                return;
-            }
-
-            $lockedRequest->priority = $newPriority;
+            $this->authorize('release', $lockedRequest);
+            $fromStatus = $lockedRequest->status;
+            $lockedRequest->assigned_technician_id = null;
+            $lockedRequest->assigned_at = null;
+            $lockedRequest->started_at = null;
+            $lockedRequest->status = ItSupportRequestStatus::Submitted;
             $lockedRequest->save();
             $auditLogger->record(
                 $lockedRequest,
                 $request->user(),
-                'priority_changed',
+                'released',
+                $fromStatus,
                 $lockedRequest->status,
-                $lockedRequest->status,
-                "Priority changed from {$oldPriority->value} to {$newPriority->value}.",
+                $validated['reason'],
             );
         });
 
-        return back()->with('status', "Priority updated for ticket {$itSupportRequest->ticket_no}.");
+        return back()->with('status', "Ticket {$itSupportRequest->ticket_no} was released to the queue.");
     }
 
     public function show(SupportRequest $itSupportRequest): View
@@ -493,7 +474,6 @@ class ItSupportRequestController extends Controller
                 $status = ItSupportRequestStatus::Submitted;
                 $supportRequest = $user->itSupportRequests()->create([
                     'request_types_id' => $requestType->getKey(),
-                    'priority' => $request->validated('priority'),
                     'summary' => $request->validated('summary'),
                     'answers' => $request->validated('answers'),
                     'requester_name' => $user->full_name,
@@ -511,7 +491,6 @@ class ItSupportRequestController extends Controller
                     'submitted',
                     null,
                     $status,
-                    'Priority: '.Str::headline($supportRequest->priority->value),
                 );
 
                 foreach ($request->file('attachments', []) as $file) {

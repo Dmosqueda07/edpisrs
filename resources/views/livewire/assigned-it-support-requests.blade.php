@@ -21,7 +21,6 @@
                         <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Reference</th>
                         <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Requester</th>
                         <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Request</th>
-                        <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Priority</th>
                         <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Status</th>
                         <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Age</th>
                         <th scope="col" class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">Assigned</th>
@@ -33,12 +32,6 @@
                             $shortTitle = $supportRequest->summary ?: $supportRequest->support_type;
                             $ageDate = $supportRequest->requested_at ?? $supportRequest->created_at;
                             $ageDays = (int) $ageDate->diffInDays(now());
-                            $priorityClass = match ($supportRequest->priority) {
-                                \App\Enums\ItSupportRequestPriority::Urgent => 'bg-red-100 text-red-800',
-                                \App\Enums\ItSupportRequestPriority::High => 'bg-amber-100 text-amber-800',
-                                \App\Enums\ItSupportRequestPriority::Normal => 'bg-blue-100 text-blue-800',
-                                default => 'bg-gray-100 text-gray-700',
-                            };
                             $statusClass = match ($supportRequest->status) {
                                 \App\Enums\ItSupportRequestStatus::Assigned => 'bg-indigo-100 text-indigo-800',
                                 \App\Enums\ItSupportRequestStatus::InProgress => 'bg-blue-100 text-blue-800',
@@ -60,9 +53,6 @@
                             <td class="max-w-xs px-5 py-4 text-sm text-gray-700">
                                 <span class="block truncate font-medium" title="{{ $shortTitle }}">{{ $shortTitle }}</span>
                                 <span class="mt-1 block truncate text-xs text-gray-500" title="{{ $supportRequest->support_type }}">{{ $supportRequest->support_type }}</span>
-                            </td>
-                            <td class="whitespace-nowrap px-5 py-4">
-                                <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $priorityClass }}">{{ \Illuminate\Support\Str::headline($supportRequest->priority->value) }}</span>
                             </td>
                             <td class="whitespace-nowrap px-5 py-4">
                                 <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ $statusClass }}">{{ \Illuminate\Support\Str::headline($supportRequest->status->value) }}</span>

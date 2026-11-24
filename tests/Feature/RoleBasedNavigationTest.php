@@ -34,8 +34,9 @@ it('shows links according to existing role policies', function () {
 
     $technician = User::factory()->create(['role' => Role::Staff, 'division' => Division::EDP]);
     $navigation = navigationFor($technician);
-    expect($navigation)->toContain('Dashboard', 'Assigned to me', 'Submit a request', 'My requests')
-        ->and($navigation)->not->toContain('EDP intake', 'Approvals', 'Admin');
+    expect($navigation)->toContain('Dashboard', 'EDP intake', 'Assigned to me', 'Submit a request', 'My requests')
+        ->and($navigation)->not->toContain('Approvals', 'Admin');
+    $this->actingAs($technician)->get(route('edp.it-support-requests.index'))->assertOk();
     $this->actingAs($technician)->get(route('edp.assigned-requests.index'))->assertOk();
 
     $employee = User::factory()->create(['role' => Role::Staff, 'division' => Division::CA]);

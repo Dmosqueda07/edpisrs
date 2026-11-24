@@ -97,7 +97,8 @@ it('shows plain language turnaround averages per type and technician', function 
     ]);
 
     $this->actingAs($admin)->get(route('reports.index', ['preset' => 'custom', 'start' => '2026-06-01', 'end' => '2026-06-30', 'tab' => 'turnaround']))
-        ->assertOk()->assertSee('1 day 3 hours')->assertSee('1 day 2 hours')->assertSee('Network support')->assertSee($technician->full_name);
+        ->assertOk()->assertSee('Submission to claim')->assertSee('Claim to completion')
+        ->assertSee('1 day 3 hours')->assertSee('1 day 2 hours')->assertSee('Network support')->assertSee($technician->full_name);
 });
 
 it('summarizes all request statuses for the received date range', function () {

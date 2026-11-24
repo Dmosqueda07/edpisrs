@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\ItSupportRequestPriority;
 use App\Enums\ItSupportRequestStatus;
 use Database\Factories\SupportRequestFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -22,7 +21,6 @@ class SupportRequest extends Model
     protected $primaryKey = 'requests_id';
 
     protected $fillable = [
-        'priority',
         'summary',
         'answers',
         'requested_at',
@@ -48,7 +46,6 @@ class SupportRequest extends Model
     protected function casts(): array
     {
         return [
-            'priority' => ItSupportRequestPriority::class,
             'status' => ItSupportRequestStatus::class,
             'certified_at' => 'datetime',
             'requested_at' => 'datetime',

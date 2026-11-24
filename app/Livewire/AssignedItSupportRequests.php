@@ -37,9 +37,8 @@ class AssignedItSupportRequests extends Component
             ->where('assigned_technician_id', auth()->id())
             ->when($this->status !== '', fn ($query) => $query->where('status', $this->status));
 
-        $overdueQuery->joinLatestActivity($query);
         $query->select('support_requests.*')->selectRaw(
-            'CASE WHEN support_requests.status IN (?, ?, ?) AND COALESCE(latest_request_activity.latest_activity, support_requests.updated_at) < ? THEN 1 ELSE 0 END AS is_overdue',
+            'CASE WHEN support_requests.status IN (?, ?, ?) AND COALESCE(support_requests.requested_at, support_requests.created_at) < ? THEN 1 ELSE 0 END AS is_overdue',
             [
                 ItSupportRequestStatus::Assigned->value,
                 ItSupportRequestStatus::InProgress->value,
@@ -49,8 +48,8 @@ class AssignedItSupportRequests extends Component
         );
 
         $requests = $query
-            ->orderByRaw("CASE support_requests.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 ELSE 4 END")
             ->orderByRaw('COALESCE(support_requests.requested_at, support_requests.created_at) ASC')
+            ->orderBy('support_requests.requests_id')
             ->paginate(10)
             ->withQueryString();
 

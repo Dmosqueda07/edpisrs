@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests;
 
-use App\Enums\ItSupportRequestPriority;
 use App\Models\RequestType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -12,14 +11,6 @@ class StoreItSupportRequestRequest extends FormRequest
     public function authorize(): bool
     {
         return $this->user() !== null;
-    }
-
-    protected function prepareForValidation(): void
-    {
-        if (! $this->exists('priority')) {
-            $this->merge(['priority' => ItSupportRequestPriority::Normal->value]);
-        }
-
     }
 
     /**
@@ -35,7 +26,6 @@ class StoreItSupportRequestRequest extends FormRequest
             ->all();
         $rules = [
             'summary' => ['required', 'string', 'max:120'],
-            'priority' => ['required', Rule::enum(ItSupportRequestPriority::class)],
             'request_type_id' => [
                 'required',
                 'integer',

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ItSupportRequestStatus;
-use App\Models\SupportRequest;
 use App\Models\RequestType;
+use App\Models\SupportRequest;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -61,7 +61,7 @@ class ReportsController extends Controller
         }
         foreach (['types', 'technicians'] as $group) {
             foreach ($turnaround[$group] as &$metrics) {
-                foreach (['assignment', 'completion'] as $metric) {
+                foreach (['claim', 'completion'] as $metric) {
                     $metrics[$metric] = $metrics[$metric]['count'] ? $this->duration((int) round($metrics[$metric]['seconds'] / $metrics[$metric]['count'])) : 'No data';
                 }
             }
@@ -77,6 +77,7 @@ class ReportsController extends Controller
     private function period(string $preset, ?string $start, ?string $end): array
     {
         $today = CarbonImmutable::today();
+
         return match ($preset) {
             'last_month' => [$today->subMonthNoOverflow()->startOfMonth(), $today->subMonthNoOverflow()->endOfMonth()],
             'this_quarter' => [$today->startOfQuarter(), $today->endOfQuarter()],
@@ -87,13 +88,13 @@ class ReportsController extends Controller
 
     private function addDuration(array &$groups, string $key, object $request): void
     {
-        $groups[$key] ??= ['assignment' => ['seconds' => 0, 'count' => 0], 'completion' => ['seconds' => 0, 'count' => 0]];
+        $groups[$key] ??= ['claim' => ['seconds' => 0, 'count' => 0], 'completion' => ['seconds' => 0, 'count' => 0]];
         $requested = $request->requested_at ? CarbonImmutable::parse($request->requested_at) : null;
         $assigned = $request->assigned_at ? CarbonImmutable::parse($request->assigned_at) : null;
         $completed = $request->completed_at ? CarbonImmutable::parse($request->completed_at) : null;
         if ($requested && $assigned && $assigned->greaterThanOrEqualTo($requested)) {
-            $groups[$key]['assignment']['seconds'] += $requested->diffInSeconds($assigned);
-            $groups[$key]['assignment']['count']++;
+            $groups[$key]['claim']['seconds'] += $requested->diffInSeconds($assigned);
+            $groups[$key]['claim']['count']++;
         }
         if ($assigned && $completed && $completed->greaterThanOrEqualTo($assigned)) {
             $groups[$key]['completion']['seconds'] += $assigned->diffInSeconds($completed);
@@ -107,9 +108,16 @@ class ReportsController extends Controller
         $hours = intdiv($seconds % 86400, 3600);
         $minutes = intdiv($seconds % 3600, 60);
         $parts = [];
-        if ($days) $parts[] = $days.' '.($days === 1 ? 'day' : 'days');
-        if ($hours) $parts[] = $hours.' '.($hours === 1 ? 'hour' : 'hours');
-        if ($minutes && count($parts) < 2) $parts[] = $minutes.' '.($minutes === 1 ? 'minute' : 'minutes');
+        if ($days) {
+            $parts[] = $days.' '.($days === 1 ? 'day' : 'days');
+        }
+        if ($hours) {
+            $parts[] = $hours.' '.($hours === 1 ? 'hour' : 'hours');
+        }
+        if ($minutes && count($parts) < 2) {
+            $parts[] = $minutes.' '.($minutes === 1 ? 'minute' : 'minutes');
+        }
+
         return $parts ? implode(' ', $parts) : 'Less than a minute';
     }
 }

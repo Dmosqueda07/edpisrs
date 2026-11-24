@@ -15,7 +15,7 @@ class NavigationBadgeCounts
         $counts = ['intake' => 0, 'assigned' => 0];
         $queries = [];
 
-        if ($user->can('manageAssignments', SupportRequest::class)) {
+        if ($user->can('viewIntake', SupportRequest::class)) {
             $queries[] = DB::table('support_requests')
                 ->selectRaw("'intake' AS badge, COUNT(*) AS total")
                 ->whereNull('assigned_technician_id')

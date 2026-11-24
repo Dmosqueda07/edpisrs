@@ -21,6 +21,7 @@ it('uses the renamed request tables and primary keys and removes approval and co
         ->and((new RequestLog)->getKeyName())->toBe('logs_id')
         ->and((new RequestType)->getKeyName())->toBe('request_types_id')
         ->and(Schema::hasColumn('support_requests', 'answers'))->toBeTrue()
+        ->and(Schema::hasColumn('support_requests', 'priority'))->toBeFalse()
         ->and(Schema::hasColumn('support_requests', 'request_types_id'))->toBeTrue()
         ->and(Schema::hasColumn('request_attachments', 'requests_id'))->toBeTrue()
         ->and(Schema::hasColumn('request_logs', 'requests_id'))->toBeTrue()
@@ -103,6 +104,6 @@ it('restricts deleting a request type while requests reference it', function () 
 it('keeps request audit logs append-only through the model', function () {
     $log = RequestLog::factory()->create();
 
-    expect(fn () => $log->update(['remarks' => 'changed']))->toThrow(\LogicException::class)
-        ->and(fn () => $log->delete())->toThrow(\LogicException::class);
+    expect(fn () => $log->update(['remarks' => 'changed']))->toThrow(LogicException::class)
+        ->and(fn () => $log->delete())->toThrow(LogicException::class);
 });

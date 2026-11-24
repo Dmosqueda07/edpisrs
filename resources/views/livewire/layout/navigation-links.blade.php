@@ -2,7 +2,7 @@
 @php($activeClass = $mobile ? 'app-mobile-link-active' : 'app-nav-link-active')
 @php($isActive = fn (string $pattern): bool => request()->routeIs($pattern))
 <a class="{{ $linkClass }} {{ $isActive('dashboard') ? $activeClass : '' }}" href="{{ route('dashboard') }}" @if($isActive('dashboard')) aria-current="page" @endif wire:navigate>Dashboard</a>
-@if($administrator)
+@if($showIntake)
     <a class="{{ $linkClass }} {{ $isActive('edp.it-support-requests.*') ? $activeClass : '' }}" href="{{ route('edp.it-support-requests.index') }}" @if($isActive('edp.it-support-requests.*')) aria-current="page" @endif wire:navigate>EDP intake @if($badgeCounts['intake'] > 0)<span class="app-nav-badge">{{ $badgeCounts['intake'] > 99 ? '99+' : $badgeCounts['intake'] }}</span>@endif</a>
 @endif
 @if($showAssigned)

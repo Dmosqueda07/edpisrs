@@ -24,7 +24,6 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Reference</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Request</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Priority</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Submitted</th>
                         <th scope="col" class="px-6 py-3"><span class="sr-only">View request</span></th>
                     </tr>
@@ -39,11 +38,6 @@
                                 <span class="mt-1 block text-xs text-gray-500">{{ $supportRequest->support_type }}</span>
                             </td>
                             <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-700">{{ \Illuminate\Support\Str::headline($supportRequest->status->value) }}</td>
-                            <td class="whitespace-nowrap px-6 py-4">
-                                <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ match ($supportRequest->priority) { \App\Enums\ItSupportRequestPriority::Urgent => 'bg-red-100 text-red-800', \App\Enums\ItSupportRequestPriority::High => 'bg-orange-100 text-orange-800', \App\Enums\ItSupportRequestPriority::Normal => 'bg-blue-100 text-blue-800', default => 'bg-gray-100 text-gray-700' } }}">
-                                    {{ \Illuminate\Support\Str::headline($supportRequest->priority->value) }}
-                                </span>
-                            </td>
                             <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-700">{{ $supportRequest->created_at->format('M j, Y g:i A') }}</td>
                             <td class="whitespace-nowrap px-6 py-4 text-right text-sm">
                                 <a href="{{ $requestUrl }}" data-request-modal-trigger wire:navigate class="font-medium text-blue-700 hover:text-blue-900">View</a>
@@ -65,7 +59,6 @@
                         <h2 id="request-modal-ticket" class="truncate text-xl font-semibold text-gray-900">Request details</h2>
                         <div class="mt-2 flex flex-wrap gap-2">
                             <span id="request-modal-status" class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"></span>
-                            <span id="request-modal-priority" class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"></span>
                         </div>
                     </div>
                     <button type="button" id="request-modal-close" class="shrink-0 rounded-md border border-gray-300 p-2 text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Close request details">
